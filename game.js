@@ -22,6 +22,7 @@ let distanceCounter = 0;
 let soundEnabled = true;
 let engineSound, crashSound;
 let gameOver = false;
+let needsRoadExtension = false;
 
 function init() {
     // Create scene
@@ -170,6 +171,8 @@ function createCar() {
     });
     const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
     body.position.y = 0.5;
+    // Store original color
+    body.userData.originalColor = body.material.color.clone();
     car.add(body);
     
     // Create car roof
@@ -180,6 +183,8 @@ function createCar() {
     });
     const roof = new THREE.Mesh(roofGeometry, roofMaterial);
     roof.position.set(0, 1.35, -0.2);
+    // Store original color
+    roof.userData.originalColor = roof.material.color.clone();
     car.add(roof);
     
     // Create windshield
@@ -192,6 +197,8 @@ function createCar() {
     });
     const windshield = new THREE.Mesh(windshieldGeometry, windshieldMaterial);
     windshield.position.set(0, 1.2, 1);
+    // Store original color
+    windshield.userData.originalColor = windshield.material.color.clone();
     car.add(windshield);
     
     // Add wheels
@@ -210,6 +217,8 @@ function createCar() {
         const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
         wheel.rotation.z = Math.PI / 2;
         wheel.position.set(...position);
+        // Store original color
+        wheel.userData.originalColor = wheel.material.color.clone();
         car.add(wheel);
     });
     
@@ -223,10 +232,14 @@ function createCar() {
     
     const leftHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
     leftHeadlight.position.set(-0.8, 0.5, 2);
+    // Store original color
+    leftHeadlight.userData.originalColor = leftHeadlight.material.color.clone();
     car.add(leftHeadlight);
     
     const rightHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
     rightHeadlight.position.set(0.8, 0.5, 2);
+    // Store original color
+    rightHeadlight.userData.originalColor = rightHeadlight.material.color.clone();
     car.add(rightHeadlight);
     
     // Position car
@@ -328,7 +341,7 @@ function createDistanceCounter() {
     // Create distance counter element
     const counter = document.createElement('div');
     counter.id = 'distance-counter';
-    counter.textContent = 'Distance: 0m';
+    counter.textContent = 'Distance: 0.00 miles';
     document.body.appendChild(counter);
 }
 
@@ -347,7 +360,7 @@ function animate(time) {
         // Update distance counter
         distanceCounter += speed * deltaTime * 0.01;
         document.getElementById('distance-counter').textContent = 
-            `Distance: ${Math.floor(distanceCounter)}m`;
+            `Distance: ${(distanceCounter * 0.000621371).toFixed(2)} miles`;
         
         // Check for collisions
         checkCollisions();
@@ -355,6 +368,12 @@ function animate(time) {
         // Play engine sound
         if (soundEnabled && engineSound && engineSound.paused) {
             engineSound.play().catch(e => console.log('Audio play error:', e));
+        }
+        
+        // Check if we need to extend the road
+        if (car.position.z > roadLength * 0.7 && !needsRoadExtension) {
+            needsRoadExtension = true;
+            extendRoad();
         }
     }
     
@@ -374,14 +393,11 @@ function updateCarPosition(deltaTime) {
         let tiltFactor = 0;
         
         if (window.DeviceOrientationEvent) {
-            // For horizontal phone orientation (landscape mode)
-            // gamma is the front-to-back tilt in degrees, where front is positive
-            // beta is the left-to-right tilt in degrees, where right is positive
-            
-            // Use gamma (front-to-back tilt) for steering in landscape mode
-            // Negative gamma means tilting the left side down (turn left)
-            // Positive gamma means tilting the right side down (turn right)
-            tiltFactor = deviceOrientation.gamma / 15; // Adjust sensitivity
+            // For steering wheel style controls (rotate phone like a steering wheel)
+            // Use beta (left-to-right tilt) for steering when holding phone facing you
+            // Negative beta means tilting left (turn left)
+            // Positive beta means tilting right (turn right)
+            tiltFactor = deviceOrientation.beta / 15; // Adjust sensitivity
             
             // Debug steering input
             if (debugMode) {
@@ -584,6 +600,9 @@ function setupEventListeners() {
         gameOver = false;
         document.getElementById('game-over').classList.remove('visible');
         
+        // Reset car appearance when starting
+        resetCarAppearance();
+        
         // Request device orientation permission on iOS 13+
         if (typeof DeviceOrientationEvent !== 'undefined' && 
             typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -605,13 +624,24 @@ function setupEventListeners() {
     });
     
     document.getElementById('restart-button').addEventListener('click', () => {
+        // Reset car position
         car.position.set(0, 0.4, 0);
+        
+        // Reset camera
         camera.position.set(0, 8, -10);
         camera.lookAt(0, 0, 10);
+        
+        // Reset game state
         isPlaying = false;
         gameOver = false;
         distanceCounter = 0;
         document.getElementById('game-over').classList.remove('visible');
+        
+        // Clear obstacles near the starting position
+        clearNearbyObstacles();
+        
+        // Reset car appearance (remove damage effects)
+        resetCarAppearance();
     });
     
     document.getElementById('toggle-debug').addEventListener('click', () => {
@@ -657,15 +687,15 @@ function setupEventListeners() {
     // Add keyboard controls for testing on desktop
     window.addEventListener('keydown', (event) => {
         if (event.key === 'ArrowLeft') {
-            deviceOrientation.gamma = -15; // Simulate tilting left
+            deviceOrientation.beta = -15; // Simulate tilting left
         } else if (event.key === 'ArrowRight') {
-            deviceOrientation.gamma = 15;  // Simulate tilting right
+            deviceOrientation.beta = 15;  // Simulate tilting right
         }
     });
     
     window.addEventListener('keyup', (event) => {
         if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-            deviceOrientation.gamma = 0;  // Reset when key released
+            deviceOrientation.beta = 0;  // Reset when key released
         }
     });
 }
@@ -674,6 +704,196 @@ function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// Function to clear obstacles near the car's position
+function clearNearbyObstacles() {
+    const safeDistance = 30; // Distance to clear obstacles ahead
+    
+    // Remove obstacles that are too close to the starting position
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        const obstacle = obstacles[i];
+        
+        // Check if obstacle is ahead of the car and within safe distance
+        if (obstacle.position.z > car.position.z && 
+            obstacle.position.z < car.position.z + safeDistance) {
+            
+            // Remove from scene and from obstacles array
+            scene.remove(obstacle);
+            obstacles.splice(i, 1);
+        }
+    }
+}
+
+// Function to reset car appearance after crash
+function resetCarAppearance() {
+    car.children.forEach(part => {
+        if (part.material && part.material.color) {
+            // Reset any color changes from damage
+            if (part.userData.originalColor) {
+                part.material.color.copy(part.userData.originalColor);
+            }
+        }
+    });
+}
+
+// Function to extend the road when the car gets close to the end
+function extendRoad() {
+    const oldRoadLength = roadLength;
+    
+    // Generate new road segments
+    let lastX = roadCurve[roadCurve.length - 1].x;
+    let lastZ = roadCurve[roadCurve.length - 1].z;
+    let direction = 0;
+    
+    const roadGroup = new THREE.Group();
+    
+    // Add new segments to extend the road
+    for (let i = 0; i < roadLength / segmentLength; i++) {
+        // Gradually change direction for curves
+        if (i % 20 === 0) {
+            direction = Math.random() * 0.3 - 0.15;
+        }
+        
+        lastX += direction * segmentLength;
+        lastZ += segmentLength;
+        
+        roadCurve.push({ x: lastX, z: lastZ });
+        
+        // Create new segment
+        if (i > 0) {
+            const p1 = roadCurve[roadCurve.length - 2];
+            const p2 = roadCurve[roadCurve.length - 1];
+            
+            // Calculate segment direction
+            const dx = p2.x - p1.x;
+            const dz = p2.z - p1.z;
+            const angle = Math.atan2(dx, dz);
+            
+            // Create segment
+            const segmentGeometry = new THREE.PlaneGeometry(roadWidth, segmentLength);
+            const segmentMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x333333,
+                side: THREE.DoubleSide
+            });
+            const segment = new THREE.Mesh(segmentGeometry, segmentMaterial);
+            
+            // Position and rotate segment
+            segment.position.set(p1.x + dx/2, 0, p1.z + dz/2);
+            segment.rotation.set(-Math.PI/2, 0, angle);
+            
+            roadGroup.add(segment);
+            roadSegments.push(segment);
+            
+            // Add road markings
+            if (i % 5 === 0) {
+                const markingGeometry = new THREE.PlaneGeometry(0.5, 2);
+                const markingMaterial = new THREE.MeshPhongMaterial({ color: 0xFFFFFF });
+                const marking = new THREE.Mesh(markingGeometry, markingMaterial);
+                
+                marking.position.set(p1.x + dx/2, 0.01, p1.z + dz/2);
+                marking.rotation.set(-Math.PI/2, 0, angle);
+                
+                roadGroup.add(marking);
+            }
+        }
+    }
+    
+    // Add the new road segments to the scene
+    scene.add(roadGroup);
+    
+    // Add trees and mountains along the extended road
+    addEnvironmentToExtendedRoad(oldRoadLength);
+    
+    // Add obstacles to the extended road
+    addObstaclesToExtendedRoad(oldRoadLength);
+    
+    // Update road length
+    roadLength *= 2;
+    
+    // Reset flag
+    needsRoadExtension = false;
+}
+
+function addEnvironmentToExtendedRoad(startZ) {
+    // Add trees along the extended road
+    const trunkGeometry = new THREE.CylinderGeometry(0.5, 0.7, 4, 8);
+    const trunkMaterial = new THREE.MeshPhongMaterial({ color: 0x8B4513 });
+    
+    const leavesGeometry = new THREE.ConeGeometry(2, 6, 8);
+    const leavesMaterial = new THREE.MeshPhongMaterial({ color: 0x006400 });
+    
+    // Add trees on both sides of the extended road
+    for (let i = 0; i < 25; i++) {
+        const tree = new THREE.Group();
+        
+        const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+        trunk.position.y = 2;
+        tree.add(trunk);
+        
+        const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+        leaves.position.y = 6;
+        tree.add(leaves);
+        
+        // Position trees along the extended road
+        const side = Math.random() > 0.5 ? 1 : -1;
+        const segment = Math.floor(roadCurve.length / 2) + Math.floor(Math.random() * (roadCurve.length / 2));
+        if (segment >= roadCurve.length) continue;
+        
+        const roadPoint = roadCurve[segment];
+        
+        tree.position.set(
+            roadPoint.x + side * (roadWidth/2 + 5 + Math.random() * 10),
+            0,
+            roadPoint.z
+        );
+        
+        scene.add(tree);
+        trees.push(tree);
+    }
+    
+    // Add mountains along the extended road
+    const mountainGeometry = new THREE.ConeGeometry(20, 40, 4);
+    const mountainMaterial = new THREE.MeshPhongMaterial({ color: 0x228B22 });
+    
+    // Add mountains on both sides of the extended road
+    for (let i = 0; i < 5; i++) {
+        const leftMountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
+        leftMountain.position.set(-30 - Math.random() * 50, 0, startZ + i * 100);
+        scene.add(leftMountain);
+        mountains.push(leftMountain);
+        
+        const rightMountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
+        rightMountain.position.set(30 + Math.random() * 50, 0, startZ + i * 100);
+        scene.add(rightMountain);
+        mountains.push(rightMountain);
+    }
+}
+
+function addObstaclesToExtendedRoad(startZ) {
+    // Create obstacles on the extended road
+    const obstacleGeometry = new THREE.BoxGeometry(1, 1, 1);
+    const obstacleMaterial = new THREE.MeshPhongMaterial({ color: 0xffcc00 });
+    
+    // Add obstacles at random positions on the extended road
+    for (let i = 0; i < 10; i++) {
+        const obstacle = new THREE.Mesh(obstacleGeometry, obstacleMaterial);
+        
+        // Position obstacles on the extended road
+        const segment = Math.floor(roadCurve.length / 2) + Math.floor(Math.random() * (roadCurve.length / 2));
+        if (segment >= roadCurve.length) continue;
+        
+        const roadPoint = roadCurve[segment];
+        
+        obstacle.position.set(
+            roadPoint.x + (Math.random() * roadWidth - roadWidth/2) * 0.8,
+            0.5,
+            roadPoint.z
+        );
+        
+        scene.add(obstacle);
+        obstacles.push(obstacle);
+    }
 }
 
 // Initialize when page loads

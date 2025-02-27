@@ -13,6 +13,8 @@ let roadWidth = 10;
 let segmentLength = 10;
 let cameraHeight = 2;
 let speed = 0.05;
+let maxSpeed = 0.2;
+let acceleration = 0.0001;
 let carDistance = 0;
 let trees = [];
 let mountains = [];
@@ -333,8 +335,10 @@ function loadSounds() {
     // Create audio elements
     engineSound = new Audio('sounds/car-changing-gears-sound-188962.mp3');
     engineSound.loop = true;
+    engineSound.volume = 0.5;
     
     crashSound = new Audio('sounds/car-accident-with-squeal-and-crash-6054.mp3');
+    crashSound.volume = 1.0;
 }
 
 function createDistanceCounter() {
@@ -354,19 +358,24 @@ function animate(time) {
     lastTime = time;
     
     if (isPlaying && !gameOver) {
+        // Gradually increase speed
+        if (speed < maxSpeed) {
+            speed += acceleration * deltaTime;
+        }
+        
         // Update car position
         updateCarPosition(deltaTime);
         
-        // Update distance counter
-        distanceCounter += speed * deltaTime * 0.01;
-        document.getElementById('distance-counter').textContent = 
-            `Distance: ${(distanceCounter * 0.000621371).toFixed(2)} miles`;
+        // Update distance counter - increased multiplier for faster accumulation
+        distanceCounter += speed * deltaTime * 0.05;
+        updateDistanceCounter();
         
         // Check for collisions
         checkCollisions();
         
         // Play engine sound
         if (soundEnabled && engineSound && engineSound.paused) {
+            engineSound.currentTime = 0; // Reset sound to beginning
             engineSound.play().catch(e => console.log('Audio play error:', e));
         }
         
@@ -378,6 +387,12 @@ function animate(time) {
     }
     
     renderer.render(scene, camera);
+}
+
+function updateDistanceCounter() {
+    // Convert meters to miles and update the display
+    const miles = (distanceCounter * 0.000621371).toFixed(2);
+    document.getElementById('distance-counter').textContent = `Distance: ${miles} miles`;
 }
 
 function updateCarPosition(deltaTime) {
@@ -436,22 +451,7 @@ function checkCollisions() {
     for (const obstacle of obstacles) {
         const distance = car.position.distanceTo(obstacle.position);
         if (distance < 2) {
-            gameOver = true;
-            isPlaying = false;
-            
-            // Play crash sound
-            if (soundEnabled && crashSound) {
-                engineSound.pause();
-                crashSound.play().catch(e => console.log('Audio play error:', e));
-            }
-            
-            // Show game over message
-            document.getElementById('game-over').textContent = 'Crashed! Press "Try Again" to continue.';
-            document.getElementById('game-over').classList.add('visible');
-            
-            // Create explosion effect
-            createExplosion(car.position);
-            
+            handleCrash('Crashed! Press "Try Again" to continue.');
             break;
         }
     }
@@ -463,20 +463,37 @@ function checkCollisions() {
         const distanceFromCenter = Math.abs(car.position.x - roadPoint.x);
         
         if (distanceFromCenter > roadWidth / 2 + 1) {
-            gameOver = true;
-            isPlaying = false;
-            
-            // Play crash sound
-            if (soundEnabled && crashSound) {
-                engineSound.pause();
-                crashSound.play().catch(e => console.log('Audio play error:', e));
-            }
-            
-            // Show game over message
-            document.getElementById('game-over').textContent = 'Off road! Press "Try Again" to continue.';
-            document.getElementById('game-over').classList.add('visible');
+            handleCrash('Off road! Press "Try Again" to continue.');
         }
     }
+}
+
+function handleCrash(message) {
+    gameOver = true;
+    isPlaying = false;
+    
+    // Stop engine sound and play crash sound
+    if (soundEnabled) {
+        if (engineSound) {
+            engineSound.pause();
+            engineSound.currentTime = 0;
+        }
+        
+        // Force crash sound to play by creating a new instance
+        if (crashSound) {
+            // Create a new instance to avoid issues with previous plays
+            const crashSoundInstance = new Audio(crashSound.src);
+            crashSoundInstance.volume = 1.0;
+            crashSoundInstance.play().catch(e => console.log('Crash sound play error:', e));
+        }
+    }
+    
+    // Show game over message
+    document.getElementById('game-over').textContent = message;
+    document.getElementById('game-over').classList.add('visible');
+    
+    // Create explosion effect
+    createExplosion(car.position);
 }
 
 function createExplosion(position) {
@@ -603,6 +620,12 @@ function setupEventListeners() {
         // Reset car appearance when starting
         resetCarAppearance();
         
+        // Start engine sound
+        if (soundEnabled && engineSound) {
+            engineSound.currentTime = 0;
+            engineSound.play().catch(e => console.log('Audio play error:', e));
+        }
+        
         // Request device orientation permission on iOS 13+
         if (typeof DeviceOrientationEvent !== 'undefined' && 
             typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -634,7 +657,9 @@ function setupEventListeners() {
         // Reset game state
         isPlaying = false;
         gameOver = false;
+        speed = 0.05; // Reset speed
         distanceCounter = 0;
+        updateDistanceCounter(); // Update the display
         document.getElementById('game-over').classList.remove('visible');
         
         // Clear obstacles near the starting position
@@ -642,6 +667,18 @@ function setupEventListeners() {
         
         // Reset car appearance (remove damage effects)
         resetCarAppearance();
+        
+        // Stop any sounds
+        if (soundEnabled) {
+            if (engineSound) {
+                engineSound.pause();
+                engineSound.currentTime = 0;
+            }
+            if (crashSound) {
+                crashSound.pause();
+                crashSound.currentTime = 0;
+            }
+        }
     });
     
     document.getElementById('toggle-debug').addEventListener('click', () => {

@@ -14,6 +14,7 @@
                 <button id="stop-button" style="display: none;">Stop</button>
                 <button id="restart-button" style="display: none; background-color: #ff3300; font-size: 1.2em; padding: 12px 24px;">Try Again</button>
                 <button id="toggle-debug">Debug</button>
+                <button id="toggle-sound">🔊</button>
             </div>
         </div>
         <div id="debug-overlay">
@@ -21,6 +22,15 @@
         </div>
         <canvas id="game-canvas"></canvas>
     </div>
+    
+    <!-- Audio elements -->
+    <audio id="engine-sound" loop preload="auto">
+        <source src="sounds/car-changing-gears-sound-188962.mp3" type="audio/mp3">
+    </audio>
+    <audio id="explosion-sound" preload="auto">
+        <source src="sounds/car-accident-with-squeal-and-crash-6054.mp3" type="audio/mp3">
+    </audio>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="game.js"></script>
 </body>

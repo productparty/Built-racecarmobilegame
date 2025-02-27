@@ -1,22 +1,33 @@
 # Race Car Game
 
-A web-based racing game that uses device gyroscope for steering control, designed to work on mobile devices including iPhone.
+A web-based race car game with gyroscope steering, designed for iPhone.
 
 ## Features
 
-- 3D racing experience with a curved road that changes direction
-- Gyroscope-based steering (tilt your phone left/right)
-- Simple controls with "Go!" and "Stop!" buttons
-- Colorful UI with a red car and green/gray environment
-- Infinite procedurally generated road
+- Colorful 3D environment with procedurally generated road
+- Gyroscope-based steering (tilt your phone to steer)
+- Mountains and trees for an immersive environment
+- Dramatic road turns for challenging gameplay
+- Obstacle avoidance gameplay
+- Car explosion effects with flames and particles
+- Sound effects for engine and crashes
+- Restart-in-place functionality after crashes
+
+## Controls
+
+- **Go!** - Start the game
+- **Stop** - Pause the game
+- **Try Again** - Continue from where you crashed
+- **Debug** - Show debug information
+- **🔊/🔇** - Toggle sound on/off
 
 ## How to Play
 
-1. Open the game in a mobile browser (Safari on iPhone works best)
-2. Hold your phone in landscape orientation
-3. Press the green "Go!" button to start driving
-4. Tilt your phone left and right to steer the car
-5. Press the red "Stop!" button to stop driving
+1. Open the game on your iPhone
+2. Press "Go!" to start driving
+3. Tilt your phone to steer the car
+4. Avoid obstacles and mountains on the road
+5. If you crash, press "Try Again" to continue from that point
 
 ## Running the Game
 
@@ -52,3 +63,24 @@ The game is built using:
 - Works best on modern mobile browsers
 - Requires device orientation support
 - For iOS 13+, the game will request permission to use the gyroscope 
+
+### Development
+
+To run locally:
+
+```
+npx serve
+```
+
+To deploy to Vercel:
+
+```
+vercel --prod
+```
+
+### Credits
+
+- Sound effects:
+  - Engine sound: "Car Changing Gears Sound" 
+  - Crash sound: "Car Accident with Squeal and Crash"
+- Built with Three.js 

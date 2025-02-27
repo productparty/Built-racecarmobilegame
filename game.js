@@ -24,6 +24,11 @@ let flames = []; // Array for car flames
 let gameOver = false;
 let explosionTime = 0;
 let carSpeed = 0; // Current car speed for deceleration
+let lastCarPosition = { x: 0, z: 0 }; // Store last position before crash
+
+// Sound effects
+let engineSound, explosionSound;
+let soundEnabled = true;
 
 // Initialize the game
 function init() {
@@ -40,6 +45,9 @@ function init() {
     renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('game-canvas'), antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
+    
+    // Load sounds
+    loadSounds();
     
     // Add lights
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -63,6 +71,53 @@ function init() {
     
     // Start animation loop
     animate(0);
+}
+
+// Load sound effects
+function loadSounds() {
+    // Get audio elements
+    engineSound = document.getElementById('engine-sound');
+    explosionSound = document.getElementById('explosion-sound');
+    
+    // Set initial volumes
+    engineSound.volume = 0.4;
+    explosionSound.volume = 0.7;
+}
+
+// Play engine sound
+function playEngineSound() {
+    if (!soundEnabled) return;
+    
+    // Only play if not already playing
+    if (engineSound.paused) {
+        engineSound.currentTime = 0;
+        engineSound.play().catch(error => {
+            console.log("Audio play failed:", error);
+            // On mobile, we need user interaction to play audio
+            // We'll try again when the user interacts with the game
+        });
+    }
+}
+
+// Stop engine sound
+function stopEngineSound() {
+    if (engineSound && !engineSound.paused) {
+        engineSound.pause();
+    }
+}
+
+// Play explosion sound
+function playExplosionSound() {
+    if (!soundEnabled) return;
+    
+    // Stop engine sound first
+    stopEngineSound();
+    
+    // Play explosion sound
+    explosionSound.currentTime = 0;
+    explosionSound.play().catch(error => {
+        console.log("Audio play failed:", error);
+    });
 }
 
 // Create distant mountains for scenery
@@ -668,6 +723,9 @@ function setupEventListeners() {
     // Debug button
     document.getElementById('toggle-debug').addEventListener('click', toggleDebug);
     
+    // Sound toggle button
+    document.getElementById('toggle-sound').addEventListener('click', toggleSound);
+    
     // Device orientation for steering
     window.addEventListener('deviceorientation', handleOrientation);
     
@@ -683,6 +741,23 @@ function toggleDebug() {
     debugMode = !debugMode;
     const debugInfo = document.getElementById('debug-info');
     debugInfo.style.display = debugMode ? 'block' : 'none';
+}
+
+// Toggle sound on/off
+function toggleSound() {
+    soundEnabled = !soundEnabled;
+    const soundButton = document.getElementById('toggle-sound');
+    
+    if (soundEnabled) {
+        soundButton.textContent = '🔊';
+        if (isPlaying && !gameOver) {
+            playEngineSound();
+        }
+    } else {
+        soundButton.textContent = '🔇';
+        stopEngineSound();
+        explosionSound.pause();
+    }
 }
 
 // Update debug info
@@ -719,8 +794,12 @@ function handleOrientation(event) {
 // Start the game
 function startGame() {
     isPlaying = true;
+    gameOver = false; // Ensure game over state is reset
     document.getElementById('start-button').style.display = 'none';
     document.getElementById('stop-button').style.display = 'block';
+    
+    // Play engine sound
+    playEngineSound();
     
     // Request device orientation permission if needed
     if (typeof DeviceOrientationEvent !== 'undefined' && 
@@ -740,6 +819,9 @@ function stopGame() {
     isPlaying = false;
     document.getElementById('start-button').style.display = 'block';
     document.getElementById('stop-button').style.display = 'none';
+    
+    // Stop engine sound
+    stopEngineSound();
 }
 
 // Handle window resize
@@ -834,6 +916,10 @@ function updateGame(deltaTime) {
         0.1
     );
     
+    // Store last position for restart-in-place
+    lastCarPosition.x = car.position.x;
+    lastCarPosition.z = car.position.z;
+    
     // Update camera position to follow car
     camera.position.x = car.position.x;
     camera.position.z = car.position.z - 5;
@@ -885,6 +971,9 @@ function handleCollision(obstacleType) {
     gameOver = true;
     explosionTime = 0;
     
+    // Play explosion sound
+    playExplosionSound();
+    
     // Create explosion at car position
     const isMountainCrash = (obstacleType === 'mountain');
     createExplosion(car.position.clone(), isMountainCrash);
@@ -897,7 +986,9 @@ function handleCollision(obstacleType) {
     
     // Hide game over message - we're not using it anymore
     const gameOverElement = document.getElementById('game-over');
-    gameOverElement.style.display = 'none';
+    if (gameOverElement) {
+        gameOverElement.style.display = 'none';
+    }
     
     // Hide control buttons
     document.getElementById('start-button').style.display = 'none';
@@ -912,8 +1003,6 @@ function handleCollision(obstacleType) {
 // Reset game after collision
 function resetGame() {
     gameOver = false;
-    carDistance = 0;
-    carPosition = 0;
     carSpeed = 0;
     
     // Remove flames
@@ -921,9 +1010,6 @@ function resetGame() {
         if (flame.parent) flame.parent.remove(flame);
     });
     flames = [];
-    
-    // Reset car position
-    car.position.set(0, 0, 0);
     
     // Clear explosion particles
     for (let i = explosionParticles.length - 1; i >= 0; i--) {
@@ -935,13 +1021,14 @@ function resetGame() {
     // Hide restart button
     document.getElementById('restart-button').style.display = 'none';
     
-    // Show start button
-    document.getElementById('start-button').style.display = 'block';
-    document.getElementById('stop-button').style.display = 'none';
+    // Show stop button since we're continuing
+    document.getElementById('stop-button').style.display = 'block';
     
-    // Reset camera position
-    camera.position.set(0, 2, 0);
-    camera.lookAt(0, 1, 10);
+    // Restart engine sound
+    playEngineSound();
+    
+    // Resume game
+    isPlaying = true;
 }
 
 // Initialize the game when the page loads

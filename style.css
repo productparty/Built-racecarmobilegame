@@ -76,6 +76,12 @@ body {
     color: white;
 }
 
+#toggle-sound {
+    background-color: #9C27B0;
+    color: white;
+    font-size: 1.2em;
+}
+
 #debug-overlay {
     position: absolute;
     bottom: 20px;

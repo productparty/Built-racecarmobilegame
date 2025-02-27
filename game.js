@@ -374,13 +374,22 @@ function updateCarPosition(deltaTime) {
         let tiltFactor = 0;
         
         if (window.DeviceOrientationEvent) {
-            tiltFactor = deviceOrientation.gamma / 20; // Adjust sensitivity
+            // For horizontal phone orientation (landscape mode)
+            // gamma is the front-to-back tilt in degrees, where front is positive
+            // beta is the left-to-right tilt in degrees, where right is positive
             
-            // Adjust for screen orientation
-            if (screenOrientation === 90) {
-                tiltFactor = -deviceOrientation.beta / 20;
-            } else if (screenOrientation === -90) {
-                tiltFactor = deviceOrientation.beta / 20;
+            // Use gamma (front-to-back tilt) for steering in landscape mode
+            // Negative gamma means tilting the left side down (turn left)
+            // Positive gamma means tilting the right side down (turn right)
+            tiltFactor = deviceOrientation.gamma / 15; // Adjust sensitivity
+            
+            // Debug steering input
+            if (debugMode) {
+                document.getElementById('debug-info').textContent = 
+                    `Steering: ${tiltFactor.toFixed(2)}, 
+                     Alpha: ${deviceOrientation.alpha.toFixed(2)}, 
+                     Beta: ${deviceOrientation.beta.toFixed(2)}, 
+                     Gamma: ${deviceOrientation.gamma.toFixed(2)}`;
             }
         }
         
@@ -574,6 +583,18 @@ function setupEventListeners() {
         isPlaying = true;
         gameOver = false;
         document.getElementById('game-over').classList.remove('visible');
+        
+        // Request device orientation permission on iOS 13+
+        if (typeof DeviceOrientationEvent !== 'undefined' && 
+            typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission()
+                .then(permissionState => {
+                    if (permissionState === 'granted') {
+                        window.addEventListener('deviceorientation', handleOrientation);
+                    }
+                })
+                .catch(console.error);
+        }
     });
     
     document.getElementById('stop-button').addEventListener('click', () => {
@@ -612,24 +633,41 @@ function setupEventListeners() {
     window.addEventListener('resize', onWindowResize);
     
     // Listen for device orientation changes
+    function handleOrientation(event) {
+        deviceOrientation.alpha = event.alpha || 0;
+        deviceOrientation.beta = event.beta || 0;
+        deviceOrientation.gamma = event.gamma || 0;
+        
+        if (debugMode) {
+            document.getElementById('debug-info').textContent = 
+                `Alpha: ${deviceOrientation.alpha.toFixed(2)}, 
+                 Beta: ${deviceOrientation.beta.toFixed(2)}, 
+                 Gamma: ${deviceOrientation.gamma.toFixed(2)}`;
+        }
+    }
+    
     if (window.DeviceOrientationEvent) {
-        window.addEventListener('deviceorientation', (event) => {
-            deviceOrientation.alpha = event.alpha || 0;
-            deviceOrientation.beta = event.beta || 0;
-            deviceOrientation.gamma = event.gamma || 0;
-            
-            if (debugMode) {
-                document.getElementById('debug-info').textContent = 
-                    `Alpha: ${deviceOrientation.alpha.toFixed(2)}, 
-                     Beta: ${deviceOrientation.beta.toFixed(2)}, 
-                     Gamma: ${deviceOrientation.gamma.toFixed(2)}`;
-            }
-        });
+        window.addEventListener('deviceorientation', handleOrientation);
         
         window.addEventListener('orientationchange', () => {
             screenOrientation = window.orientation || 0;
         });
     }
+    
+    // Add keyboard controls for testing on desktop
+    window.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowLeft') {
+            deviceOrientation.gamma = -15; // Simulate tilting left
+        } else if (event.key === 'ArrowRight') {
+            deviceOrientation.gamma = 15;  // Simulate tilting right
+        }
+    });
+    
+    window.addEventListener('keyup', (event) => {
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            deviceOrientation.gamma = 0;  // Reset when key released
+        }
+    });
 }
 
 function onWindowResize() {

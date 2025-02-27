@@ -165,54 +165,6 @@ function createMountains() {
     scene.add(mountainGroup);
 }
 
-// Add mountains that partially block the road
-function addRoadMountains() {
-    // Add mountains at intervals along the road - less frequently now
-    for (let i = 200; i < roadLength; i += 300) {
-        // Alternate sides of the road
-        const side = (i % 600 < 300) ? 1 : -1;
-        
-        // Create mountain geometry
-        const height = 5 + Math.random() * 10;
-        const radius = 3 + Math.random() * 5;
-        
-        const mountainGeometry = new THREE.ConeGeometry(radius, height, 8);
-        const mountainMaterial = new THREE.MeshPhongMaterial({
-            color: 0x708090, // Blue-gray
-            flatShading: true
-        });
-        
-        const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
-        
-        // Get road curve at this position
-        const segmentIndex = Math.floor(i / segmentLength);
-        const roadX = segmentIndex < roadCurve.length ? roadCurve[segmentIndex] : 0;
-        
-        // Position the mountain less on the road
-        // Side determines which side of the road the mountain is on
-        const roadEdge = roadX + (side * roadWidth / 2);
-        const inwardOffset = radius * 0.4; // Reduced how far the mountain extends onto the road
-        
-        mountain.position.set(
-            roadEdge - (side * inwardOffset), // Position less on the road
-            height / 2 - 0.5, // Y position (half height to sit on ground)
-            i // Z position along the road
-        );
-        
-        // Add collision data
-        mountain.userData = {
-            isObstacle: true,
-            radius: radius * 0.7, // Slightly smaller collision radius than visual
-            segmentIndex: segmentIndex,
-            type: 'mountain'
-        };
-        
-        scene.add(mountain);
-        roadMountains.push(mountain);
-        obstacles.push(mountain); // Add to obstacles for collision detection
-    }
-}
-
 // Create the car model
 function createCar() {
     // Simple car body
@@ -431,8 +383,8 @@ function generateRoad() {
     scene.add(roadGroup);
     road = roadGroup;
     
-    // Add mountains that partially block the road
-    addRoadMountains();
+    // Add potholes on the road instead of mountains
+    addPotholes();
 }
 
 // Create a tree
@@ -544,13 +496,13 @@ function addObstacle(x, z, parent, segmentIndex) {
 }
 
 // Create explosion effect
-function createExplosion(position, isMountainCrash = false) {
-    // More particles for mountain crashes
-    const particleCount = isMountainCrash ? 100 : 50;
+function createExplosion(position, isPotholeCrash = false) {
+    // More particles for pothole crashes
+    const particleCount = isPotholeCrash ? 100 : 50;
     const explosionGroup = new THREE.Group();
     
     // Add a flash of light
-    const flashGeometry = new THREE.SphereGeometry(isMountainCrash ? 5 : 3, 16, 16);
+    const flashGeometry = new THREE.SphereGeometry(isPotholeCrash ? 3 : 2, 16, 16);
     const flashMaterial = new THREE.MeshBasicMaterial({
         color: 0xffff00,
         transparent: true,
@@ -562,11 +514,11 @@ function createExplosion(position, isMountainCrash = false) {
     scene.add(flash);
     explosionParticles.push(flash);
     
-    // Add smoke cloud for mountain crashes
-    if (isMountainCrash) {
+    // Add smoke and debris for pothole crashes
+    if (isPotholeCrash) {
         const smokeCount = 15;
         for (let i = 0; i < smokeCount; i++) {
-            const smokeSize = 1 + Math.random() * 3;
+            const smokeSize = 0.5 + Math.random() * 1.5;
             const smokeGeometry = new THREE.SphereGeometry(smokeSize, 8, 8);
             const smokeMaterial = new THREE.MeshBasicMaterial({
                 color: 0x444444,
@@ -577,136 +529,183 @@ function createExplosion(position, isMountainCrash = false) {
             
             // Position around crash site
             smoke.position.set(
-                position.x + (Math.random() - 0.5) * 8,
-                position.y + Math.random() * 5,
-                position.z + (Math.random() - 0.5) * 8
+                position.x + (Math.random() - 0.5) * 5,
+                position.y + Math.random() * 3,
+                position.z + (Math.random() - 0.5) * 5
             );
             
-            // Set random velocity (slower than debris)
-            const velocity = new THREE.Vector3(
-                (Math.random() - 0.5) * 0.05,
-                Math.random() * 0.05,
-                (Math.random() - 0.5) * 0.05
-            );
-            
-            smoke.userData = { 
-                velocity,
+            // Add velocity for animation
+            smoke.userData = {
                 type: 'smoke',
-                expandRate: 0.01 + Math.random() * 0.02
+                velocity: new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.05,
+                    0.05 + Math.random() * 0.05,
+                    (Math.random() - 0.5) * 0.05
+                ),
+                lifetime: 1000 + Math.random() * 2000
             };
             
             scene.add(smoke);
             explosionParticles.push(smoke);
         }
+        
+        // Add some road debris (pieces of asphalt)
+        const debrisCount = 20;
+        for (let i = 0; i < debrisCount; i++) {
+            const debrisSize = 0.1 + Math.random() * 0.2;
+            const debrisGeometry = new THREE.BoxGeometry(debrisSize, debrisSize, debrisSize);
+            const debrisMaterial = new THREE.MeshBasicMaterial({
+                color: 0x333333 // Asphalt color
+            });
+            const debris = new THREE.Mesh(debrisGeometry, debrisMaterial);
+            
+            // Position at crash site
+            debris.position.copy(position);
+            
+            // Add velocity for animation
+            const speed = 0.1 + Math.random() * 0.2;
+            const angle = Math.random() * Math.PI * 2;
+            debris.userData = {
+                type: 'debris',
+                velocity: new THREE.Vector3(
+                    Math.cos(angle) * speed,
+                    0.1 + Math.random() * 0.2,
+                    Math.sin(angle) * speed
+                ),
+                rotationSpeed: new THREE.Vector3(
+                    Math.random() * 0.2,
+                    Math.random() * 0.2,
+                    Math.random() * 0.2
+                ),
+                lifetime: 1000 + Math.random() * 1000
+            };
+            
+            scene.add(debris);
+            explosionParticles.push(debris);
+        }
     }
     
-    // Create debris particles
+    // Add explosion particles
     for (let i = 0; i < particleCount; i++) {
-        // Create particle geometry
-        const size = 0.1 + Math.random() * (isMountainCrash ? 0.3 : 0.2);
-        const geometry = new THREE.BoxGeometry(size, size, size);
-        
-        // Random colors for explosion
-        const colors = isMountainCrash ? 
-            [0xff0000, 0xff5500, 0xffaa00, 0xffff00, 0xaaaaaa] : // Add some gray for rocks
-            [0xff0000, 0xff5500, 0xffaa00, 0xffff00];
-            
-        const material = new THREE.MeshBasicMaterial({
-            color: colors[Math.floor(Math.random() * colors.length)],
-            emissive: 0xff0000,
+        const particleGeometry = new THREE.SphereGeometry(0.1, 4, 4);
+        const particleMaterial = new THREE.MeshBasicMaterial({
+            color: Math.random() > 0.3 ? 0xff5500 : 0xffff00,
             transparent: true,
-            opacity: 1.0
+            opacity: 0.8
         });
+        const particle = new THREE.Mesh(particleGeometry, particleMaterial);
         
-        const particle = new THREE.Mesh(geometry, material);
+        // Position at explosion center
+        particle.position.copy(position);
         
-        // Set random velocity - faster for mountain crashes
-        const speedMultiplier = isMountainCrash ? 1.5 : 1.0;
-        const velocity = new THREE.Vector3(
-            (Math.random() - 0.5) * 0.2 * speedMultiplier,
-            Math.random() * 0.2 * speedMultiplier,
-            (Math.random() - 0.5) * 0.2 * speedMultiplier
-        );
+        // Add velocity for animation
+        const speed = 0.05 + Math.random() * 0.1;
+        const angle = Math.random() * Math.PI * 2;
+        const elevation = Math.random() * Math.PI - Math.PI / 2;
         
-        particle.userData = { 
-            velocity,
-            type: 'debris'
+        particle.userData = {
+            type: 'particle',
+            velocity: new THREE.Vector3(
+                Math.cos(angle) * Math.cos(elevation) * speed,
+                Math.sin(elevation) * speed,
+                Math.sin(angle) * Math.cos(elevation) * speed
+            ),
+            lifetime: 500 + Math.random() * 1000
         };
         
-        // Position around car
-        particle.position.set(
-            position.x + (Math.random() - 0.5) * 2,
-            position.y + (Math.random() - 0.5) * 2,
-            position.z + (Math.random() - 0.5) * 2
-        );
-        
-        explosionGroup.add(particle);
+        scene.add(particle);
         explosionParticles.push(particle);
     }
-    
-    scene.add(explosionGroup);
-    return explosionGroup;
 }
 
 // Update explosion particles
 function updateExplosion(deltaTime) {
-    for (let i = 0; i < explosionParticles.length; i++) {
+    // Update each particle
+    for (let i = explosionParticles.length - 1; i >= 0; i--) {
         const particle = explosionParticles[i];
         
-        if (particle.userData.type === 'flash') {
-            // Update flash lifetime
-            particle.userData.lifetime -= deltaTime;
-            if (particle.userData.lifetime <= 0) {
-                scene.remove(particle);
-                continue;
-            }
-            // Shrink flash
-            const scale = particle.userData.lifetime / 300;
-            particle.scale.set(scale, scale, scale);
-            particle.material.opacity = scale * 0.8;
+        // Skip if particle has been removed
+        if (!particle.parent) {
+            explosionParticles.splice(i, 1);
             continue;
         }
         
-        if (particle.userData.type === 'smoke') {
-            // Expand smoke
-            particle.scale.x += particle.userData.expandRate * deltaTime;
-            particle.scale.y += particle.userData.expandRate * deltaTime;
-            particle.scale.z += particle.userData.expandRate * deltaTime;
+        // Update based on particle type
+        if (particle.userData.type === 'flash') {
+            // Flash fades quickly
+            particle.material.opacity -= deltaTime * 0.005;
+            particle.scale.multiplyScalar(1 + deltaTime * 0.001);
             
-            // Fade out smoke
-            if (particle.material.opacity > 0) {
-                particle.material.opacity -= 0.002 * deltaTime;
+            if (particle.material.opacity <= 0) {
+                scene.remove(particle);
+                explosionParticles.splice(i, 1);
+            }
+        } 
+        else if (particle.userData.type === 'smoke') {
+            // Smoke rises and expands
+            particle.position.add(particle.userData.velocity.clone().multiplyScalar(deltaTime));
+            particle.scale.multiplyScalar(1 + deltaTime * 0.0005);
+            particle.material.opacity -= deltaTime * 0.0003;
+            
+            // Update lifetime
+            particle.userData.lifetime -= deltaTime;
+            if (particle.userData.lifetime <= 0 || particle.material.opacity <= 0) {
+                scene.remove(particle);
+                explosionParticles.splice(i, 1);
             }
         }
-        
-        const velocity = particle.userData.velocity;
-        
-        // Apply gravity
-        velocity.y -= 0.01 * deltaTime;
-        
-        // Update position
-        particle.position.x += velocity.x * deltaTime;
-        particle.position.y += velocity.y * deltaTime;
-        particle.position.z += velocity.z * deltaTime;
-        
-        // Rotate particle
-        particle.rotation.x += 0.02 * deltaTime;
-        particle.rotation.y += 0.02 * deltaTime;
-        
-        // Fade out debris
-        if (particle.userData.type === 'debris' && particle.material.opacity > 0) {
-            particle.material.opacity -= 0.01 * deltaTime;
+        else if (particle.userData.type === 'debris') {
+            // Debris follows physics (gravity)
+            particle.userData.velocity.y -= 0.0003 * deltaTime; // Gravity
+            particle.position.add(particle.userData.velocity.clone().multiplyScalar(deltaTime));
+            
+            // Rotate debris
+            particle.rotation.x += particle.userData.rotationSpeed.x * deltaTime;
+            particle.rotation.y += particle.userData.rotationSpeed.y * deltaTime;
+            particle.rotation.z += particle.userData.rotationSpeed.z * deltaTime;
+            
+            // Update lifetime
+            particle.userData.lifetime -= deltaTime;
+            if (particle.userData.lifetime <= 0 || particle.position.y < -5) {
+                scene.remove(particle);
+                explosionParticles.splice(i, 1);
+            }
+        }
+        else if (particle.userData.type === 'particle') {
+            // Explosion particles follow physics
+            particle.userData.velocity.y -= 0.0002 * deltaTime; // Gravity
+            particle.position.add(particle.userData.velocity.clone().multiplyScalar(deltaTime));
+            particle.material.opacity -= deltaTime * 0.001;
+            
+            // Update lifetime
+            particle.userData.lifetime -= deltaTime;
+            if (particle.userData.lifetime <= 0 || particle.material.opacity <= 0) {
+                scene.remove(particle);
+                explosionParticles.splice(i, 1);
+            }
+        }
+        else {
+            // Legacy particles (for backward compatibility)
+            if (particle.userData.velocity) {
+                particle.position.add(particle.userData.velocity.clone().multiplyScalar(deltaTime));
+                particle.userData.velocity.y -= 0.0002 * deltaTime; // Gravity
+            }
+            
+            // Fade out
+            if (particle.material.opacity) {
+                particle.material.opacity -= deltaTime * 0.001;
+                
+                if (particle.material.opacity <= 0) {
+                    if (particle.parent === scene) {
+                        scene.remove(particle);
+                    } else if (particle.parent) {
+                        particle.parent.remove(particle);
+                    }
+                    explosionParticles.splice(i, 1);
+                }
+            }
         }
     }
-    
-    // Remove faded particles
-    explosionParticles = explosionParticles.filter(p => {
-        if (p.material.opacity <= 0 || p.userData.lifetime <= 0) {
-            scene.remove(p);
-            return false;
-        }
-        return true;
-    });
 }
 
 // Set up event listeners
@@ -975,8 +974,8 @@ function handleCollision(obstacleType) {
     playExplosionSound();
     
     // Create explosion at car position
-    const isMountainCrash = (obstacleType === 'mountain');
-    createExplosion(car.position.clone(), isMountainCrash);
+    const isPotholeCrash = (obstacleType === 'pothole');
+    createExplosion(car.position.clone(), isPotholeCrash);
     
     // Add flames to the car instead of hiding it
     createCarFlames();
@@ -1029,6 +1028,60 @@ function resetGame() {
     
     // Resume game
     isPlaying = true;
+}
+
+// Create potholes on the road
+function addPotholes() {
+    // Add potholes at random intervals along the road (more frequently)
+    for (let i = 200; i < roadLength; i += 30 + Math.floor(Math.random() * 50)) {
+        // Random position across the road width (but not too close to the edge)
+        const segmentIndex = Math.floor(i / segmentLength);
+        const roadX = segmentIndex < roadCurve.length ? roadCurve[segmentIndex] : 0;
+        const offsetX = (Math.random() - 0.5) * (roadWidth - 2);
+        
+        // Create pothole geometry
+        const radius = 0.5 + Math.random() * 0.5;
+        const potholeGeometry = new THREE.CircleGeometry(radius, 12);
+        const potholeMaterial = new THREE.MeshPhongMaterial({
+            color: 0x111111, // Dark color for pothole
+            side: THREE.DoubleSide,
+            shininess: 0 // No shine for pothole
+        });
+        
+        const pothole = new THREE.Mesh(potholeGeometry, potholeMaterial);
+        
+        // Rotate to lie flat on the road
+        pothole.rotation.x = -Math.PI / 2;
+        
+        // Position the pothole
+        pothole.position.set(
+            roadX + offsetX,
+            0.02, // Slightly above road to avoid z-fighting
+            i
+        );
+        
+        // Add a rim around the pothole for better visibility
+        const rimGeometry = new THREE.RingGeometry(radius, radius + 0.1, 12);
+        const rimMaterial = new THREE.MeshBasicMaterial({
+            color: 0x333333,
+            side: THREE.DoubleSide
+        });
+        const rim = new THREE.Mesh(rimGeometry, rimMaterial);
+        rim.rotation.x = -Math.PI / 2;
+        rim.position.y = 0.025; // Slightly above the pothole
+        pothole.add(rim);
+        
+        // Add collision data
+        pothole.userData = {
+            isObstacle: true,
+            radius: radius * 0.9, // Slightly smaller collision radius than visual
+            segmentIndex: segmentIndex,
+            type: 'pothole'
+        };
+        
+        scene.add(pothole);
+        obstacles.push(pothole); // Add to obstacles for collision detection
+    }
 }
 
 // Initialize the game when the page loads

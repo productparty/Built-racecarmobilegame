@@ -41,50 +41,55 @@ function init() {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87CEEB); // Sky blue background
     
-    // Create camera
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 2, 0);
-    camera.lookAt(0, 1, 10);
+    // Create camera with adjusted position and FOV
+    camera = new THREE.PerspectiveCamera(
+        60, // Reduced FOV from 75 to 60 for better visibility
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+    );
     
-    // Create renderer
-    renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('game-canvas'), antialias: true });
+    // Position camera higher and further back
+    camera.position.set(0, 5, -5); // Changed from (0, 2, 0)
+    camera.lookAt(0, 0, 10);
+    
+    // Create renderer with explicit canvas
+    const canvas = document.getElementById('game-canvas');
+    renderer = new THREE.WebGLRenderer({ 
+        canvas,
+        antialias: true,
+        alpha: true
+    });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     
-    // Reset game variables
-    obstacles = [];
-    roadMountains = []; // Clear any mountains on the road
-    
-    // Load sounds
-    loadSounds();
-    
-    // Add lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    // Enhanced lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8); // Increased intensity
     scene.add(ambientLight);
     
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0); // Increased intensity
     directionalLight.position.set(10, 20, 10);
+    directionalLight.castShadow = true;
     scene.add(directionalLight);
+
+    // Add a helper grid for debugging
+    const gridHelper = new THREE.GridHelper(100, 100);
+    scene.add(gridHelper);
     
-    // Add distant mountains
-    createMountains();
-    
-    // Create car
+    // Initialize game elements
     createCar();
-    
-    // Generate initial road
     generateRoad();
-    
-    // Set up event listeners
-    setupEventListeners();
-    
-    // Add distance counter to the UI
-    const distanceCounter = document.createElement('div');
-    distanceCounter.id = 'distance-counter';
-    document.body.appendChild(distanceCounter);
+    createMountains();
     
     // Start animation loop
     animate(0);
+    
+    // Log debug info
+    console.log('Scene initialized:', {
+        cameraPosition: camera.position,
+        sceneChildren: scene.children.length,
+        rendererInfo: renderer.info
+    });
 }
 
 // Load sound effects
@@ -202,45 +207,27 @@ function createMountains() {
 
 // Create the car model
 function createCar() {
-    // Simple car body
     const carBody = new THREE.Group();
     
-    // Main body
-    const bodyGeometry = new THREE.BoxGeometry(1, 0.5, 2);
-    const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000 }); // Red car
+    // Main body - made larger and brighter red
+    const bodyGeometry = new THREE.BoxGeometry(2, 1, 4); // Increased size
+    const bodyMaterial = new THREE.MeshPhongMaterial({ 
+        color: 0xff0000,
+        emissive: 0x330000, // Add slight emission
+        shininess: 30
+    });
     const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    body.position.y = 0.5;
+    body.position.y = 1; // Raised position
     carBody.add(body);
     
-    // Cabin
-    const cabinGeometry = new THREE.BoxGeometry(0.8, 0.4, 0.8);
-    const cabinMaterial = new THREE.MeshPhongMaterial({ color: 0x333333 });
-    const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
-    cabin.position.set(0, 0.9, -0.2);
-    carBody.add(cabin);
-    
-    // Wheels
-    const wheelGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 16);
-    const wheelMaterial = new THREE.MeshPhongMaterial({ color: 0x333333 });
-    
-    const wheelPositions = [
-        { x: -0.6, y: 0.3, z: 0.7 },
-        { x: 0.6, y: 0.3, z: 0.7 },
-        { x: -0.6, y: 0.3, z: -0.7 },
-        { x: 0.6, y: 0.3, z: -0.7 }
-    ];
-    
-    wheelPositions.forEach(pos => {
-        const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-        wheel.rotation.z = Math.PI / 2;
-        wheel.position.set(pos.x, pos.y, pos.z);
-        carBody.add(wheel);
-    });
-    
     // Add car to scene
-    carBody.position.set(0, 0, 0);
     scene.add(carBody);
     car = carBody;
+    
+    // Position car at starting point
+    car.position.set(0, 0, 0);
+    
+    console.log('Car created:', car.position);
 }
 
 // Create flames for the car
@@ -827,42 +814,34 @@ function onWindowResize() {
 function animate(time) {
     requestAnimationFrame(animate);
     
+    // Ensure renderer is valid
+    if (!renderer) {
+        console.error('Renderer not initialized');
+        return;
+    }
+    
     const deltaTime = time - lastTime;
     lastTime = time;
     
-    if (isPlaying) {
-        if (!gameOver) {
-            updateGame(deltaTime);
-            checkCollisions();
-        } else {
-            // Update explosion when game over
-            explosionTime += deltaTime;
-            updateExplosion(deltaTime);
-            
-            // Update flames on the car
-            updateFlames(deltaTime);
-            
-            // Slow down the car gradually
-            if (carSpeed > 0) {
-                carSpeed = Math.max(0, carSpeed - 0.0001 * deltaTime);
-                carDistance += carSpeed * deltaTime;
-                
-                // Update car position during slowdown
-                const currentSegment = Math.floor(carDistance / segmentLength) % (roadLength / segmentLength);
-                const targetX = roadCurve[currentSegment];
-                car.position.z = carDistance % roadLength;
-                car.position.x = targetX + carPosition;
-                
-                // Update camera to follow car during slowdown
-                camera.position.x = car.position.x;
-                camera.position.z = car.position.z - 5;
-                camera.lookAt(car.position.x, car.position.y + 1, car.position.z + 10);
-            }
-        }
+    // Always render, even if not playing
+    renderer.render(scene, camera);
+    
+    if (isPlaying && !gameOver) {
+        updateGame(deltaTime);
+        checkCollisions();
     }
     
-    updateDebugInfo();
-    renderer.render(scene, camera);
+    // Debug output
+    if (debugMode) {
+        const debugInfo = document.getElementById('debug-info');
+        if (debugInfo) {
+            debugInfo.innerHTML = `
+                <div>Camera: ${JSON.stringify(camera.position)}</div>
+                <div>Car: ${JSON.stringify(car.position)}</div>
+                <div>FPS: ${Math.round(1000 / deltaTime)}</div>
+            `;
+        }
+    }
 }
 
 // Update game state

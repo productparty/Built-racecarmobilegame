@@ -41,4 +41,4 @@ git push -u origin main
 2. Hold your phone in landscape orientation
 3. Press the "Go!" button to start
 4. Allow motion sensor access when prompted
-5. Tilt your phone to steer the car 
+5. Tilt your phone to steer the car

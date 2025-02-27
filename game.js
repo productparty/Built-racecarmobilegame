@@ -96,15 +96,10 @@ function createCar() {
 
 // Generate a curved road
 function generateRoad() {
-    // Generate road curve points with seamless looping
-    // Make sure the start and end points match for seamless looping
-    const frequency = 0.05;
-    const amplitude = 3;
-    const cycleLength = Math.PI * 2 / frequency;
-    const cycles = Math.ceil(roadLength / segmentLength / cycleLength);
-    
+    // Generate road curve points
     for (let i = 0; i < roadLength / segmentLength; i++) {
-        const curveAmount = Math.sin(i * frequency) * amplitude;
+        // Create a smoother wavy road by reducing frequency and amplitude
+        const curveAmount = Math.sin(i * 0.05) * 3;
         roadCurve.push(curveAmount);
     }
     

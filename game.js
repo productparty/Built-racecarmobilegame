@@ -418,7 +418,9 @@ function updateCarPosition(deltaTime) {
             // Use beta (left-to-right tilt) for steering when holding phone facing you
             // Negative beta means tilting left (turn left)
             // Positive beta means tilting right (turn right)
-            tiltFactor = deviceOrientation.beta / 15; // Adjust sensitivity
+            
+            // Invert the beta value to fix steering direction
+            tiltFactor = -deviceOrientation.beta / 15; // Inverted and adjusted sensitivity
             
             // Debug steering input
             if (debugMode) {
@@ -441,7 +443,7 @@ function updateCarPosition(deltaTime) {
         car.position.x = Math.max(targetX - halfRoadWidth, Math.min(targetX + halfRoadWidth, car.position.x));
         
         // Tilt car based on steering
-        car.rotation.z = -tiltFactor * 0.2;
+        car.rotation.z = -tiltFactor * 0.2; // Also invert this to match the steering
         car.rotation.y = Math.atan2(targetX - car.position.x, 10) * 0.2;
     }
     
@@ -730,9 +732,9 @@ function setupEventListeners() {
     // Add keyboard controls for testing on desktop
     window.addEventListener('keydown', (event) => {
         if (event.key === 'ArrowLeft') {
-            deviceOrientation.beta = -15; // Simulate tilting left
+            deviceOrientation.beta = 15; // Simulate tilting left (now positive beta turns left)
         } else if (event.key === 'ArrowRight') {
-            deviceOrientation.beta = 15;  // Simulate tilting right
+            deviceOrientation.beta = -15;  // Simulate tilting right (now negative beta turns right)
         }
     });
     

@@ -25,6 +25,10 @@ let gameOver = false;
 let explosionTime = 0;
 let carSpeed = 0; // Current car speed for deceleration
 let lastCarPosition = { x: 0, z: 0 }; // Store last position before crash
+let distanceDriven = 0;  // Total distance in meters
+let lastSpeedIncrease = 0;  // Time tracker for speed increases
+let baseSpeed = 0.05;    // Initial speed
+let speedMultiplier = 1; // Speed multiplier
 
 // Sound effects
 let engineSound, explosionSound;
@@ -73,6 +77,21 @@ function init() {
     // Set up event listeners
     setupEventListeners();
     
+    // Add distance counter to the UI
+    const distanceCounter = document.createElement('div');
+    distanceCounter.id = 'distance-counter';
+    distanceCounter.style.cssText = `
+        position: fixed;
+        left: 20px;
+        top: 20px;
+        color: white;
+        font-size: 24px;
+        font-family: Arial, sans-serif;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        z-index: 1000;
+    `;
+    document.body.appendChild(distanceCounter);
+    
     // Start animation loop
     animate(0);
 }
@@ -105,8 +124,9 @@ function playEngineSound() {
 
 // Stop engine sound
 function stopEngineSound() {
-    if (engineSound && !engineSound.paused) {
+    if (engineSound) {
         engineSound.pause();
+        engineSound.currentTime = 0; // Reset the sound to beginning
     }
 }
 
@@ -114,30 +134,10 @@ function stopEngineSound() {
 function playExplosionSound() {
     if (!soundEnabled) return;
     
-    // Stop engine sound first
-    stopEngineSound();
-    
-    // Reset and play explosion sound
     explosionSound.currentTime = 0;
-    
-    // Create a promise to handle the play attempt
-    const playAttempt = async () => {
-        try {
-            await explosionSound.play();
-        } catch (error) {
-            console.log("Initial play failed, retrying...");
-            // Add a slight delay and try again
-            setTimeout(async () => {
-                try {
-                    await explosionSound.play();
-                } catch (e) {
-                    console.log("Retry failed:", e);
-                }
-            }, 100);
-        }
-    };
-    
-    playAttempt();
+    explosionSound.play().catch(error => {
+        console.log("Failed to play explosion sound:", error);
+    });
 }
 
 // Create distant mountains for scenery
@@ -901,6 +901,27 @@ function animate(time) {
 
 // Update game state
 function updateGame(deltaTime) {
+    // Update distance driven
+    const metersPerUnit = 5; // Conversion factor for game units to meters
+    distanceDriven += (speed * deltaTime * metersPerUnit);
+    
+    // Update distance counter display
+    const distanceCounter = document.getElementById('distance-counter');
+    if (distanceCounter) {
+        distanceCounter.innerHTML = `Distance: ${Math.floor(distanceDriven)}m`;
+    }
+    
+    // Check if it's time to increase speed (every 5 seconds)
+    lastSpeedIncrease += deltaTime;
+    if (lastSpeedIncrease >= 5000) { // 5000ms = 5 seconds
+        speedMultiplier += 0.1; // Increase speed by 10%
+        speed = baseSpeed * speedMultiplier;
+        lastSpeedIncrease = 0; // Reset timer
+        
+        // Optional: Show speed increase notification
+        showSpeedIncreaseNotification();
+    }
+    
     // Move car forward
     carDistance += speed * deltaTime;
     
@@ -996,12 +1017,19 @@ function handleCollision(obstacleType) {
     gameOver = true;
     explosionTime = 0;
     
-    // Ensure audio is ready before playing
-    if (explosionSound.readyState >= 2) { // HAVE_CURRENT_DATA or better
-        playExplosionSound();
-    } else {
-        explosionSound.addEventListener('canplay', playExplosionSound, { once: true });
+    // Show final distance
+    const finalDistance = Math.floor(distanceDriven);
+    const gameOverElement = document.getElementById('game-over');
+    if (gameOverElement) {
+        gameOverElement.style.display = 'block';
+        gameOverElement.innerHTML = `Game Over!<br>Distance: ${finalDistance}m`;
     }
+    
+    // Immediately stop the engine sound
+    stopEngineSound();
+    
+    // Play explosion sound immediately
+    playExplosionSound();
     
     // Create explosion at car position
     const isPotholeCrash = (obstacleType === 'pothole');
@@ -1009,11 +1037,6 @@ function handleCollision(obstacleType) {
     
     createCarFlames();
     carSpeed = speed;
-    
-    const gameOverElement = document.getElementById('game-over');
-    if (gameOverElement) {
-        gameOverElement.style.display = 'none';
-    }
     
     document.getElementById('start-button').style.display = 'none';
     document.getElementById('stop-button').style.display = 'none';
@@ -1052,6 +1075,12 @@ function resetGame() {
     
     // Resume game
     isPlaying = true;
+    
+    // Reset speed and distance
+    distanceDriven = 0;
+    speedMultiplier = 1;
+    speed = baseSpeed;
+    lastSpeedIncrease = 0;
 }
 
 // Create potholes on the road
@@ -1118,6 +1147,40 @@ function addPotholes() {
         obstacles.push(pothole); // Add to obstacles for collision detection
     }
 }
+
+// Add a function to show speed increase notification
+function showSpeedIncreaseNotification() {
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        color: yellow;
+        font-size: 24px;
+        font-family: Arial, sans-serif;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        animation: fadeOut 1s ease-in forwards;
+        z-index: 1000;
+    `;
+    notification.textContent = 'Speed Increased!';
+    document.body.appendChild(notification);
+    
+    // Remove notification after animation
+    setTimeout(() => {
+        document.body.removeChild(notification);
+    }, 1000);
+}
+
+// Add this CSS for the notification animation
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes fadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
+    }
+`;
+document.head.appendChild(style);
 
 // Initialize the game when the page loads
 window.addEventListener('load', init); 

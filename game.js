@@ -12,9 +12,9 @@ let roadLength = 1000;
 let roadWidth = 10;
 let segmentLength = 10;
 let cameraHeight = 2;
-let speed = 0.05;
-let maxSpeed = 0.2;
-let acceleration = 0.0001;
+let speed = 0.02;
+let maxSpeed = 0.15;
+let acceleration = 0.000015;
 let carDistance = 0;
 let trees = [];
 let mountains = [];
@@ -358,16 +358,22 @@ function animate(time) {
     lastTime = time;
     
     if (isPlaying && !gameOver) {
-        // Gradually increase speed
+        // Gradually increase speed - more gentle acceleration
         if (speed < maxSpeed) {
             speed += acceleration * deltaTime;
+            
+            // Debug speed info
+            if (debugMode) {
+                document.getElementById('debug-info').textContent += 
+                    `\nSpeed: ${speed.toFixed(5)}, Distance: ${distanceCounter.toFixed(2)}`;
+            }
         }
         
         // Update car position
         updateCarPosition(deltaTime);
         
-        // Update distance counter - increased multiplier for faster accumulation
-        distanceCounter += speed * deltaTime * 0.05;
+        // Update distance counter - adjusted for slower speed
+        distanceCounter += speed * deltaTime * 0.03;
         updateDistanceCounter();
         
         // Check for collisions
@@ -657,7 +663,7 @@ function setupEventListeners() {
         // Reset game state
         isPlaying = false;
         gameOver = false;
-        speed = 0.05; // Reset speed
+        speed = 0.02; // Reset to initial slower speed
         distanceCounter = 0;
         updateDistanceCounter(); // Update the display
         document.getElementById('game-over').classList.remove('visible');

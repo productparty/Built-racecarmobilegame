@@ -18,6 +18,7 @@ let debugMode = false;
 let steerValue = 0;
 let trees = []; // Array to store tree objects
 let obstacles = []; // Array to store obstacles
+let roadMountains = []; // Array to store mountains on the road
 let explosionParticles = []; // Array for explosion particles
 let gameOver = false;
 let explosionTime = 0;
@@ -105,6 +106,54 @@ function createMountains() {
     }
     
     scene.add(mountainGroup);
+}
+
+// Add mountains that partially block the road
+function addRoadMountains() {
+    // Add mountains at intervals along the road
+    for (let i = 100; i < roadLength; i += 150) {
+        // Alternate sides of the road
+        const side = (i % 300 < 150) ? 1 : -1;
+        
+        // Create mountain geometry
+        const height = 5 + Math.random() * 10;
+        const radius = 3 + Math.random() * 5;
+        
+        const mountainGeometry = new THREE.ConeGeometry(radius, height, 8);
+        const mountainMaterial = new THREE.MeshPhongMaterial({
+            color: 0x708090, // Blue-gray
+            flatShading: true
+        });
+        
+        const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
+        
+        // Get road curve at this position
+        const segmentIndex = Math.floor(i / segmentLength);
+        const roadX = segmentIndex < roadCurve.length ? roadCurve[segmentIndex] : 0;
+        
+        // Position the mountain partially on the road
+        // Side determines which side of the road the mountain is on
+        const roadEdge = roadX + (side * roadWidth / 2);
+        const inwardOffset = radius * 0.7; // How far the mountain extends onto the road
+        
+        mountain.position.set(
+            roadEdge - (side * inwardOffset), // Position partially on the road
+            height / 2 - 0.5, // Y position (half height to sit on ground)
+            i // Z position along the road
+        );
+        
+        // Add collision data
+        mountain.userData = {
+            isObstacle: true,
+            radius: radius * 0.8, // Slightly smaller collision radius than visual
+            segmentIndex: segmentIndex,
+            type: 'mountain'
+        };
+        
+        scene.add(mountain);
+        roadMountains.push(mountain);
+        obstacles.push(mountain); // Add to obstacles for collision detection
+    }
 }
 
 // Create the car model
@@ -250,6 +299,9 @@ function generateRoad() {
     
     scene.add(roadGroup);
     road = roadGroup;
+    
+    // Add mountains that partially block the road
+    addRoadMountains();
 }
 
 // Create a tree
@@ -361,17 +413,73 @@ function addObstacle(x, z, parent, segmentIndex) {
 }
 
 // Create explosion effect
-function createExplosion(position) {
-    const particleCount = 50;
+function createExplosion(position, isMountainCrash = false) {
+    // More particles for mountain crashes
+    const particleCount = isMountainCrash ? 100 : 50;
     const explosionGroup = new THREE.Group();
     
+    // Add a flash of light
+    const flashGeometry = new THREE.SphereGeometry(isMountainCrash ? 5 : 3, 16, 16);
+    const flashMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffff00,
+        transparent: true,
+        opacity: 0.8
+    });
+    const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+    flash.position.copy(position);
+    flash.userData = { type: 'flash', lifetime: 300 };
+    scene.add(flash);
+    explosionParticles.push(flash);
+    
+    // Add smoke cloud for mountain crashes
+    if (isMountainCrash) {
+        const smokeCount = 15;
+        for (let i = 0; i < smokeCount; i++) {
+            const smokeSize = 1 + Math.random() * 3;
+            const smokeGeometry = new THREE.SphereGeometry(smokeSize, 8, 8);
+            const smokeMaterial = new THREE.MeshBasicMaterial({
+                color: 0x444444,
+                transparent: true,
+                opacity: 0.7
+            });
+            const smoke = new THREE.Mesh(smokeGeometry, smokeMaterial);
+            
+            // Position around crash site
+            smoke.position.set(
+                position.x + (Math.random() - 0.5) * 8,
+                position.y + Math.random() * 5,
+                position.z + (Math.random() - 0.5) * 8
+            );
+            
+            // Set random velocity (slower than debris)
+            const velocity = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.05,
+                Math.random() * 0.05,
+                (Math.random() - 0.5) * 0.05
+            );
+            
+            smoke.userData = { 
+                velocity,
+                type: 'smoke',
+                expandRate: 0.01 + Math.random() * 0.02
+            };
+            
+            scene.add(smoke);
+            explosionParticles.push(smoke);
+        }
+    }
+    
+    // Create debris particles
     for (let i = 0; i < particleCount; i++) {
         // Create particle geometry
-        const size = 0.1 + Math.random() * 0.2;
+        const size = 0.1 + Math.random() * (isMountainCrash ? 0.3 : 0.2);
         const geometry = new THREE.BoxGeometry(size, size, size);
         
         // Random colors for explosion
-        const colors = [0xff0000, 0xff5500, 0xffaa00, 0xffff00];
+        const colors = isMountainCrash ? 
+            [0xff0000, 0xff5500, 0xffaa00, 0xffff00, 0xaaaaaa] : // Add some gray for rocks
+            [0xff0000, 0xff5500, 0xffaa00, 0xffff00];
+            
         const material = new THREE.MeshBasicMaterial({
             color: colors[Math.floor(Math.random() * colors.length)],
             emissive: 0xff0000
@@ -379,14 +487,18 @@ function createExplosion(position) {
         
         const particle = new THREE.Mesh(geometry, material);
         
-        // Set random velocity
+        // Set random velocity - faster for mountain crashes
+        const speedMultiplier = isMountainCrash ? 1.5 : 1.0;
         const velocity = new THREE.Vector3(
-            (Math.random() - 0.5) * 0.2,
-            Math.random() * 0.2,
-            (Math.random() - 0.5) * 0.2
+            (Math.random() - 0.5) * 0.2 * speedMultiplier,
+            Math.random() * 0.2 * speedMultiplier,
+            (Math.random() - 0.5) * 0.2 * speedMultiplier
         );
         
-        particle.userData = { velocity };
+        particle.userData = { 
+            velocity,
+            type: 'debris'
+        };
         
         // Position around car
         particle.position.set(
@@ -407,6 +519,33 @@ function createExplosion(position) {
 function updateExplosion(deltaTime) {
     for (let i = 0; i < explosionParticles.length; i++) {
         const particle = explosionParticles[i];
+        
+        if (particle.userData.type === 'flash') {
+            // Update flash lifetime
+            particle.userData.lifetime -= deltaTime;
+            if (particle.userData.lifetime <= 0) {
+                scene.remove(particle);
+                continue;
+            }
+            // Shrink flash
+            const scale = particle.userData.lifetime / 300;
+            particle.scale.set(scale, scale, scale);
+            particle.material.opacity = scale * 0.8;
+            continue;
+        }
+        
+        if (particle.userData.type === 'smoke') {
+            // Expand smoke
+            particle.scale.x += particle.userData.expandRate * deltaTime;
+            particle.scale.y += particle.userData.expandRate * deltaTime;
+            particle.scale.z += particle.userData.expandRate * deltaTime;
+            
+            // Fade out smoke
+            if (particle.material.opacity > 0) {
+                particle.material.opacity -= 0.002 * deltaTime;
+            }
+        }
+        
         const velocity = particle.userData.velocity;
         
         // Apply gravity
@@ -421,14 +560,20 @@ function updateExplosion(deltaTime) {
         particle.rotation.x += 0.02 * deltaTime;
         particle.rotation.y += 0.02 * deltaTime;
         
-        // Fade out
-        if (particle.material.opacity > 0) {
+        // Fade out debris
+        if (particle.userData.type === 'debris' && particle.material.opacity > 0) {
             particle.material.opacity -= 0.01 * deltaTime;
         }
     }
     
     // Remove faded particles
-    explosionParticles = explosionParticles.filter(p => p.material.opacity > 0);
+    explosionParticles = explosionParticles.filter(p => {
+        if (p.material.opacity <= 0 || p.userData.lifetime <= 0) {
+            scene.remove(p);
+            return false;
+        }
+        return true;
+    });
 }
 
 // Set up event listeners
@@ -617,7 +762,11 @@ function checkCollisions() {
         const obstacleSegment = obstacle.userData.segmentIndex;
         const currentSegment = Math.floor(carDistance / segmentLength) % (roadLength / segmentLength);
         
-        if (Math.abs(obstacleSegment - currentSegment) > 5) continue;
+        // For regular obstacles, only check nearby ones
+        // For mountains, check with a wider range since they're larger
+        const checkRange = obstacle.userData.type === 'mountain' ? 10 : 5;
+        
+        if (Math.abs(obstacleSegment - currentSegment) > checkRange) continue;
         
         const dx = car.position.x - obstacle.position.x;
         const dz = car.position.z - obstacle.position.z;
@@ -625,27 +774,40 @@ function checkCollisions() {
         
         if (distance < carRadius + obstacle.userData.radius) {
             // Collision detected!
-            handleCollision();
+            handleCollision(obstacle.userData.type);
             break;
         }
     }
 }
 
 // Handle collision
-function handleCollision() {
+function handleCollision(obstacleType) {
     if (gameOver) return;
     
     gameOver = true;
     explosionTime = 0;
     
     // Create explosion at car position
-    createExplosion(car.position.clone());
+    const isMountainCrash = (obstacleType === 'mountain');
+    createExplosion(car.position.clone(), isMountainCrash);
     
     // Hide car
     car.visible = false;
     
     // Show game over message
-    document.getElementById('game-over').style.display = 'flex';
+    const gameOverElement = document.getElementById('game-over');
+    const crashTitle = gameOverElement.querySelector('h2');
+    const crashMessage = gameOverElement.querySelector('p');
+    
+    if (obstacleType === 'mountain') {
+        crashTitle.textContent = 'MOUNTAIN CRASH!';
+        crashMessage.textContent = 'Your car exploded on a mountain!';
+    } else {
+        crashTitle.textContent = 'CRASH!';
+        crashMessage.textContent = 'Your car exploded!';
+    }
+    
+    gameOverElement.style.display = 'flex';
     
     // Hide control buttons
     document.getElementById('start-button').style.display = 'none';

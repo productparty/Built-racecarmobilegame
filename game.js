@@ -46,6 +46,10 @@ function init() {
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     
+    // Reset game variables
+    obstacles = [];
+    roadMountains = []; // Clear any mountains on the road
+    
     // Load sounds
     loadSounds();
     
@@ -113,11 +117,19 @@ function playExplosionSound() {
     // Stop engine sound first
     stopEngineSound();
     
-    // Play explosion sound
+    // Play explosion sound with retry mechanism
     explosionSound.currentTime = 0;
-    explosionSound.play().catch(error => {
-        console.log("Audio play failed:", error);
-    });
+    const playPromise = explosionSound.play();
+    
+    if (playPromise !== undefined) {
+        playPromise.catch(error => {
+            console.log("Audio play failed:", error);
+            // Try again with user interaction context
+            setTimeout(() => {
+                explosionSound.play().catch(e => console.log("Retry failed:", e));
+            }, 100);
+        });
+    }
 }
 
 // Create distant mountains for scenery
@@ -945,9 +957,8 @@ function checkCollisions() {
         const obstacleSegment = obstacle.userData.segmentIndex;
         const currentSegment = Math.floor(carDistance / segmentLength) % (roadLength / segmentLength);
         
-        // For regular obstacles, only check nearby ones
-        // For mountains, check with a wider range since they're larger
-        const checkRange = obstacle.userData.type === 'mountain' ? 10 : 5;
+        // Check nearby obstacles
+        const checkRange = 5;
         
         if (Math.abs(obstacleSegment - currentSegment) > checkRange) continue;
         
@@ -957,7 +968,7 @@ function checkCollisions() {
         
         if (distance < carRadius + obstacle.userData.radius) {
             // Collision detected!
-            handleCollision(obstacle.userData.type);
+            handleCollision(obstacle.userData.type || 'obstacle');
             break;
         }
     }
@@ -1040,10 +1051,10 @@ function addPotholes() {
         const offsetX = (Math.random() - 0.5) * (roadWidth - 2);
         
         // Create pothole geometry
-        const radius = 0.5 + Math.random() * 0.5;
+        const radius = 0.6 + Math.random() * 0.6; // Slightly larger potholes
         const potholeGeometry = new THREE.CircleGeometry(radius, 12);
         const potholeMaterial = new THREE.MeshPhongMaterial({
-            color: 0x111111, // Dark color for pothole
+            color: 0x000000, // Darker color for better contrast
             side: THREE.DoubleSide,
             shininess: 0 // No shine for pothole
         });
@@ -1056,20 +1067,31 @@ function addPotholes() {
         // Position the pothole
         pothole.position.set(
             roadX + offsetX,
-            0.02, // Slightly above road to avoid z-fighting
+            0.03, // Higher above road to avoid z-fighting
             i
         );
         
-        // Add a rim around the pothole for better visibility
-        const rimGeometry = new THREE.RingGeometry(radius, radius + 0.1, 12);
+        // Add a more visible rim around the pothole
+        const rimGeometry = new THREE.RingGeometry(radius, radius + 0.15, 12);
         const rimMaterial = new THREE.MeshBasicMaterial({
-            color: 0x333333,
+            color: 0x555555, // Lighter color for better contrast
             side: THREE.DoubleSide
         });
         const rim = new THREE.Mesh(rimGeometry, rimMaterial);
         rim.rotation.x = -Math.PI / 2;
         rim.position.y = 0.025; // Slightly above the pothole
         pothole.add(rim);
+        
+        // Add a second inner rim for better visibility
+        const innerRimGeometry = new THREE.RingGeometry(radius * 0.7, radius * 0.8, 12);
+        const innerRimMaterial = new THREE.MeshBasicMaterial({
+            color: 0x222222,
+            side: THREE.DoubleSide
+        });
+        const innerRim = new THREE.Mesh(innerRimGeometry, innerRimMaterial);
+        innerRim.rotation.x = -Math.PI / 2;
+        innerRim.position.y = 0.026; // Slightly above the outer rim
+        pothole.add(innerRim);
         
         // Add collision data
         pothole.userData = {

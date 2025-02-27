@@ -77,19 +77,9 @@ function init() {
     // Set up event listeners
     setupEventListeners();
     
-    // Add distance counter to the UI with updated position (right side)
+    // Add distance counter to the UI
     const distanceCounter = document.createElement('div');
     distanceCounter.id = 'distance-counter';
-    distanceCounter.style.cssText = `
-        position: fixed;
-        right: 20px;  // Changed from left to right
-        top: 20px;
-        color: white;
-        font-size: 24px;
-        font-family: Arial, sans-serif;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-        z-index: 1000;
-    `;
     document.body.appendChild(distanceCounter);
     
     // Start animation loop
@@ -139,11 +129,16 @@ function playExplosionSound() {
         explosionSound.currentTime = 0;
         explosionSound.volume = 0.7;  // Set an appropriate volume
         
-        // Create and play a new Audio instance for more reliable playback
-        const crashSound = new Audio(explosionSound.src);
-        crashSound.volume = 0.7;
-        crashSound.play().catch(error => {
+        // Play the explosion sound directly
+        explosionSound.play().catch(error => {
             console.log("Failed to play explosion sound:", error);
+            
+            // Fallback: Create and play a new Audio instance for more reliable playback
+            const crashSound = new Audio('sounds/car-accident-with-squeal-and-crash-6054.mp3');
+            crashSound.volume = 0.7;
+            crashSound.play().catch(err => {
+                console.log("Fallback audio also failed:", err);
+            });
         });
     }
 }
@@ -774,7 +769,12 @@ function setupEventListeners() {
 function toggleDebug() {
     debugMode = !debugMode;
     const debugInfo = document.getElementById('debug-info');
-    debugInfo.style.display = debugMode ? 'block' : 'none';
+    
+    if (debugMode) {
+        debugInfo.classList.add('debug-visible');
+    } else {
+        debugInfo.classList.remove('debug-visible');
+    }
 }
 
 // Toggle sound on/off
@@ -829,8 +829,8 @@ function handleOrientation(event) {
 function startGame() {
     isPlaying = true;
     gameOver = false; // Ensure game over state is reset
-    document.getElementById('start-button').style.display = 'none';
-    document.getElementById('stop-button').style.display = 'block';
+    document.getElementById('start-button').classList.add('hidden');
+    document.getElementById('stop-button').classList.remove('hidden');
     
     // Play engine sound
     playEngineSound();
@@ -851,8 +851,8 @@ function startGame() {
 // Stop the game
 function stopGame() {
     isPlaying = false;
-    document.getElementById('start-button').style.display = 'block';
-    document.getElementById('stop-button').style.display = 'none';
+    document.getElementById('start-button').classList.remove('hidden');
+    document.getElementById('stop-button').classList.add('hidden');
     
     // Stop engine sound
     stopEngineSound();
@@ -1046,18 +1046,20 @@ function handleCollision(obstacleType) {
         const finalMiles = (distanceDriven / 1609.34).toFixed(1);
         const gameOverElement = document.getElementById('game-over');
         if (gameOverElement) {
-            gameOverElement.style.display = 'block';
+            gameOverElement.classList.add('visible');
             gameOverElement.innerHTML = `Game Over!<br>Distance: ${finalMiles} mi`;
         }
     }, 50);
     
     carSpeed = speed;
     
-    document.getElementById('start-button').style.display = 'none';
-    document.getElementById('stop-button').style.display = 'none';
+    // Hide control buttons
+    document.getElementById('start-button').classList.add('hidden');
+    document.getElementById('stop-button').classList.add('hidden');
     
+    // Show restart button after a delay
     setTimeout(() => {
-        document.getElementById('restart-button').style.display = 'block';
+        document.getElementById('restart-button').classList.add('visible');
     }, 3000);
 }
 
@@ -1079,11 +1081,12 @@ function resetGame() {
     }
     explosionParticles = [];
     
-    // Hide restart button
-    document.getElementById('restart-button').style.display = 'none';
+    // Hide game over and restart button
+    document.getElementById('game-over').classList.remove('visible');
+    document.getElementById('restart-button').classList.remove('visible');
     
-    // Show stop button since we're continuing
-    document.getElementById('stop-button').style.display = 'block';
+    // Show stop button
+    document.getElementById('stop-button').classList.remove('hidden');
     
     // Restart engine sound
     playEngineSound();
@@ -1166,18 +1169,7 @@ function addPotholes() {
 // Add a function to show speed increase notification
 function showSpeedIncreaseNotification() {
     const notification = document.createElement('div');
-    notification.style.cssText = `
-        position: fixed;
-        left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
-        color: yellow;
-        font-size: 24px;
-        font-family: Arial, sans-serif;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-        animation: fadeOut 1s ease-in forwards;
-        z-index: 1000;
-    `;
+    notification.className = 'speed-notification';
     notification.textContent = 'Speed Increased!';
     document.body.appendChild(notification);
     
@@ -1187,15 +1179,5 @@ function showSpeedIncreaseNotification() {
     }, 1000);
 }
 
-// Add this CSS for the notification animation
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes fadeOut {
-        from { opacity: 1; }
-        to { opacity: 0; }
-    }
-`;
-document.head.appendChild(style);
-
 // Initialize the game when the page loads
-window.addEventListener('load', init); 
+window.addEventListener('load', init);

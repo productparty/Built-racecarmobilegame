@@ -117,19 +117,27 @@ function playExplosionSound() {
     // Stop engine sound first
     stopEngineSound();
     
-    // Play explosion sound with retry mechanism
+    // Reset and play explosion sound
     explosionSound.currentTime = 0;
-    const playPromise = explosionSound.play();
     
-    if (playPromise !== undefined) {
-        playPromise.catch(error => {
-            console.log("Audio play failed:", error);
-            // Try again with user interaction context
-            setTimeout(() => {
-                explosionSound.play().catch(e => console.log("Retry failed:", e));
+    // Create a promise to handle the play attempt
+    const playAttempt = async () => {
+        try {
+            await explosionSound.play();
+        } catch (error) {
+            console.log("Initial play failed, retrying...");
+            // Add a slight delay and try again
+            setTimeout(async () => {
+                try {
+                    await explosionSound.play();
+                } catch (e) {
+                    console.log("Retry failed:", e);
+                }
             }, 100);
-        });
-    }
+        }
+    };
+    
+    playAttempt();
 }
 
 // Create distant mountains for scenery
@@ -139,34 +147,41 @@ function createMountains() {
     // Create several mountain ranges at different distances and along the road
     for (let range = 0; range < 3; range++) {
         const distance = 100 + range * 50; // Distance from road
-        const rangeWidth = 800; // Width of mountain range (increased)
-        const mountainCount = 25 + range * 5; // More mountains
+        const rangeWidth = 800; // Width of mountain range
+        const mountainCount = 25 + range * 5;
         
-        // Create mountains along the entire road length
         for (let roadSection = 0; roadSection < 3; roadSection++) {
             const zOffset = roadSection * (roadLength / 3);
             
             for (let i = 0; i < mountainCount; i++) {
-                // Position along the range
                 const position = (i / mountainCount) * rangeWidth - rangeWidth / 2;
                 
-                // Create mountain geometry
+                // Calculate minimum distance from road center
+                const minDistanceFromRoad = (roadWidth / 2) + 20; // Road width plus buffer
+                
+                // Ensure mountain is placed away from road
+                let xPosition = position + (Math.random() - 0.5) * 60;
+                if (Math.abs(xPosition) < minDistanceFromRoad) {
+                    // If too close to road, push it outside
+                    xPosition = (xPosition > 0) ? 
+                        minDistanceFromRoad + Math.random() * 20 : 
+                        -minDistanceFromRoad - Math.random() * 20;
+                }
+                
                 const height = 20 + Math.random() * 30;
                 const radius = 10 + Math.random() * 20;
                 
                 const mountainGeometry = new THREE.ConeGeometry(radius, height, 8);
                 const mountainMaterial = new THREE.MeshPhongMaterial({
-                    color: range === 0 ? 0x4682B4 : (range === 1 ? 0x708090 : 0x778899), // Different blue-gray shades
+                    color: range === 0 ? 0x4682B4 : (range === 1 ? 0x708090 : 0x778899),
                     flatShading: true
                 });
                 
                 const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
-                
-                // Position the mountain
                 mountain.position.set(
-                    position + (Math.random() - 0.5) * 60, // X position with more randomness
-                    height / 2 - 5, // Y position (half height to sit on ground)
-                    zOffset + (Math.random() - 0.5) * 100 + distance // Z position with more randomness
+                    xPosition,
+                    height / 2 - 5,
+                    zOffset + (Math.random() - 0.5) * 100 + distance
                 );
                 
                 mountainGroup.add(mountain);
@@ -981,30 +996,28 @@ function handleCollision(obstacleType) {
     gameOver = true;
     explosionTime = 0;
     
-    // Play explosion sound
-    playExplosionSound();
+    // Ensure audio is ready before playing
+    if (explosionSound.readyState >= 2) { // HAVE_CURRENT_DATA or better
+        playExplosionSound();
+    } else {
+        explosionSound.addEventListener('canplay', playExplosionSound, { once: true });
+    }
     
     // Create explosion at car position
     const isPotholeCrash = (obstacleType === 'pothole');
     createExplosion(car.position.clone(), isPotholeCrash);
     
-    // Add flames to the car instead of hiding it
     createCarFlames();
-    
-    // Gradually slow down the car
     carSpeed = speed;
     
-    // Hide game over message - we're not using it anymore
     const gameOverElement = document.getElementById('game-over');
     if (gameOverElement) {
         gameOverElement.style.display = 'none';
     }
     
-    // Hide control buttons
     document.getElementById('start-button').style.display = 'none';
     document.getElementById('stop-button').style.display = 'none';
     
-    // Show restart button after a delay
     setTimeout(() => {
         document.getElementById('restart-button').style.display = 'block';
     }, 3000);

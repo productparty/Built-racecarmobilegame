@@ -77,13 +77,13 @@ function init() {
     // Set up event listeners
     setupEventListeners();
     
-    // Add distance counter to the UI
+    // Add distance counter to the UI with updated position
     const distanceCounter = document.createElement('div');
     distanceCounter.id = 'distance-counter';
     distanceCounter.style.cssText = `
         position: fixed;
         left: 20px;
-        top: 20px;
+        top: 60px;  // Increased top position to be below sound button
         color: white;
         font-size: 24px;
         font-family: Arial, sans-serif;
@@ -901,14 +901,17 @@ function animate(time) {
 
 // Update game state
 function updateGame(deltaTime) {
-    // Update distance driven
+    // Update distance driven (convert meters to miles)
     const metersPerUnit = 5; // Conversion factor for game units to meters
     distanceDriven += (speed * deltaTime * metersPerUnit);
+    
+    // Convert meters to miles (1 mile = 1609.34 meters)
+    const milesDriver = distanceDriven / 1609.34;
     
     // Update distance counter display
     const distanceCounter = document.getElementById('distance-counter');
     if (distanceCounter) {
-        distanceCounter.innerHTML = `Distance: ${Math.floor(distanceDriven)}m`;
+        distanceCounter.innerHTML = `Distance: ${milesDriver.toFixed(1)} mi`;
     }
     
     // Check if it's time to increase speed (every 5 seconds)
@@ -1017,12 +1020,12 @@ function handleCollision(obstacleType) {
     gameOver = true;
     explosionTime = 0;
     
-    // Show final distance
-    const finalDistance = Math.floor(distanceDriven);
+    // Show final distance in miles
+    const finalMiles = (distanceDriven / 1609.34).toFixed(1);
     const gameOverElement = document.getElementById('game-over');
     if (gameOverElement) {
         gameOverElement.style.display = 'block';
-        gameOverElement.innerHTML = `Game Over!<br>Distance: ${finalDistance}m`;
+        gameOverElement.innerHTML = `Game Over!<br>Distance: ${finalMiles} mi`;
     }
     
     // Immediately stop the engine sound

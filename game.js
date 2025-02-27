@@ -319,107 +319,60 @@ function updateFlames(deltaTime) {
 
 // Generate a curved road
 function generateRoad() {
-    // Generate road curve points with more dramatic turns
-    const frequency = 0.05;
-    const baseAmplitude = 3;
-    const dramaticTurnFrequency = 0.01; // Frequency of dramatic turns
-    const dramaticTurnAmplitude = 8; // Amplitude of dramatic turns
+    const roadManager = new RoadManager();
+    const textureLoader = new THREE.TextureLoader();
     
-    for (let i = 0; i < roadLength / segmentLength; i++) {
-        // Create a combination of gentle curves and occasional dramatic turns
-        const normalCurve = Math.sin(i * frequency) * baseAmplitude;
-        const dramaticCurve = Math.sin(i * dramaticTurnFrequency) * dramaticTurnAmplitude;
-        
-        // Add some random variation to make turns less predictable
-        const randomVariation = Math.sin(i * 0.2) * 1.5;
-        
-        // Combine all curve components
-        const curveAmount = normalCurve + dramaticCurve + randomVariation;
-        
-        roadCurve.push(curveAmount);
-    }
+    // Create texture atlas
+    const roadTextureAtlas = textureLoader.load('road_atlas.png');
+    roadTextureAtlas.minFilter = THREE.NearestMilinearFilter;
+    roadTextureAtlas.magFilter = THREE.LinearFilter;
     
-    // Create road segments
-    const roadGroup = new THREE.Group();
-    
-    // Add road base (darker asphalt underneath)
-    const roadBaseGeometry = new THREE.PlaneGeometry(roadWidth + 1, roadLength);
-    const roadBaseMaterial = new THREE.MeshPhongMaterial({
-        color: 0x1a1a1a, // Dark asphalt
-        side: THREE.DoubleSide
+    // Create optimized materials
+    const roadMaterial = new THREE.MeshStandardMaterial({
+        map: roadTextureAtlas,
+        roughnessMap: textureLoader.load('road_roughness.png'),
+        metalnessMap: textureLoader.load('road_metalness.png'),
+        side: THREE.FrontSide, // Only render front face for performance
     });
-    const roadBase = new THREE.Mesh(roadBaseGeometry, roadBaseMaterial);
-    roadBase.rotation.x = -Math.PI / 2;
-    roadBase.position.set(0, -0.05, roadLength / 2);
-    roadGroup.add(roadBase);
+
+    // Create instanced mesh for repeating elements
+    const markingGeometry = new THREE.PlaneGeometry(0.2, 5);
+    const markingMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const markingInstance = new THREE.InstancedMesh(
+        markingGeometry,
+        markingMaterial,
+        Math.floor(roadLength / 10)
+    );
+
+    // Set up road segments with instancing
+    const segmentCount = roadLength / segmentLength;
+    const matrix = new THREE.Matrix4();
     
-    for (let i = 0; i < roadLength / segmentLength; i++) {
+    for (let i = 0; i < segmentCount; i++) {
         const z = i * segmentLength;
         const x = roadCurve[i];
-        
-        // Road segment
-        const segmentGeometry = new THREE.PlaneGeometry(roadWidth, segmentLength);
-        const segmentMaterial = new THREE.MeshPhongMaterial({ 
-            color: i % 2 === 0 ? 0x333333 : 0x444444,
-            side: THREE.DoubleSide
-        });
-        
-        const segment = new THREE.Mesh(segmentGeometry, segmentMaterial);
-        segment.rotation.x = -Math.PI / 2;
+
+        // Position road segment
+        matrix.makeTranslation(x, 0, z + segmentLength / 2);
+        matrix.makeRotationX(-Math.PI / 2);
+        markingInstance.setMatrixAt(i, matrix);
+
+        // Create road segment with LOD
+        const segment = new THREE.Mesh(
+            roadManager.createRoadGeometry(1, 1),
+            roadMaterial
+        );
         segment.position.set(x, 0, z + segmentLength / 2);
+        segment.rotation.x = -Math.PI / 2;
         
-        roadGroup.add(segment);
-        roadSegments.push(segment);
-        
-        // Add road markings (white lines)
-        if (i % 4 < 2) { // Create dashed center line
-            const lineGeometry = new THREE.PlaneGeometry(0.2, segmentLength * 0.7);
-            const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-            const line = new THREE.Mesh(lineGeometry, lineMaterial);
-            line.rotation.x = -Math.PI / 2;
-            line.position.set(x, 0.01, z + segmentLength / 2); // Slightly above road
-            roadGroup.add(line);
-        }
-        
-        // Add side grass
-        const grassGeometry = new THREE.PlaneGeometry(20, segmentLength);
-        const grassMaterial = new THREE.MeshPhongMaterial({ 
-            color: 0x4CAF50,
-            side: THREE.DoubleSide
-        });
-        
-        // Left grass
-        const leftGrass = new THREE.Mesh(grassGeometry, grassMaterial);
-        leftGrass.rotation.x = -Math.PI / 2;
-        leftGrass.position.set(x - roadWidth / 2 - 10, -0.01, z + segmentLength / 2);
-        roadGroup.add(leftGrass);
-        
-        // Right grass
-        const rightGrass = new THREE.Mesh(grassGeometry, grassMaterial);
-        rightGrass.rotation.x = -Math.PI / 2;
-        rightGrass.position.set(x + roadWidth / 2 + 10, -0.01, z + segmentLength / 2);
-        roadGroup.add(rightGrass);
-        
-        // Add occasional trees on both sides of the road
-        if (i % 15 === 0 || i % 23 === 0) { // Use prime numbers for more natural spacing
-            addTree(x - roadWidth / 2 - 5, z, roadGroup); // Left side tree
-        }
-        
-        if (i % 17 === 0 || i % 19 === 0) { // Different spacing for right side
-            addTree(x + roadWidth / 2 + 5, z, roadGroup); // Right side tree
-        }
-        
-        // Add occasional obstacles on the road
-        if (i % 50 === 0 && i > 20) { // Start obstacles after some distance
-            addObstacle(x, z, roadGroup, i);
-        }
+        roadManager.segments.push(segment);
+        scene.add(segment);
     }
+
+    scene.add(markingInstance);
     
-    scene.add(roadGroup);
-    road = roadGroup;
-    
-    // Add potholes on the road instead of mountains
-    addPotholes();
+    // Add update to render loop
+    return roadManager;
 }
 
 // Create a tree
@@ -914,6 +867,30 @@ function animate(time) {
 
 // Update game state
 function updateGame(deltaTime) {
+    // Update physics world
+    physicsWorld.stepSimulation(deltaTime / 1000, 10);
+    
+    // Update car position from physics
+    const transform = new Ammo.btTransform();
+    const motionState = carBody.getMotionState();
+    motionState.getWorldTransform(transform);
+    
+    const pos = transform.getOrigin();
+    const rot = transform.getRotation();
+    
+    car.position.set(pos.x(), pos.y(), pos.z());
+    car.quaternion.set(rot.x(), rot.y(), rot.z(), rot.w());
+    
+    // Update obstacles
+    obstacles.forEach(obstacle => {
+        if (obstacle.userData.physicsBody) {
+            const motionState = obstacle.userData.physicsBody.getMotionState();
+            motionState.getWorldTransform(transform);
+            const pos = transform.getOrigin();
+            obstacle.position.set(pos.x(), pos.y(), pos.z());
+        }
+    });
+    
     // Update distance driven (convert meters to miles)
     const metersPerUnit = 5; // Conversion factor for game units to meters
     distanceDriven += (speed * deltaTime * metersPerUnit);

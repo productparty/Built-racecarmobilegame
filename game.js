@@ -17,6 +17,10 @@ let carDistance = 0; // Distance traveled
 let debugMode = false;
 let steerValue = 0;
 let trees = []; // Array to store tree objects
+let obstacles = []; // Array to store obstacles
+let explosionParticles = []; // Array for explosion particles
+let gameOver = false;
+let explosionTime = 0;
 
 // Initialize the game
 function init() {
@@ -62,36 +66,41 @@ function init() {
 function createMountains() {
     const mountainGroup = new THREE.Group();
     
-    // Create several mountain ranges at different distances
+    // Create several mountain ranges at different distances and along the road
     for (let range = 0; range < 3; range++) {
         const distance = 100 + range * 50; // Distance from road
-        const rangeWidth = 500; // Width of mountain range
-        const mountainCount = 15 + range * 5; // Number of peaks in this range
+        const rangeWidth = 800; // Width of mountain range (increased)
+        const mountainCount = 25 + range * 5; // More mountains
         
-        for (let i = 0; i < mountainCount; i++) {
-            // Position along the range
-            const position = (i / mountainCount) * rangeWidth - rangeWidth / 2;
+        // Create mountains along the entire road length
+        for (let roadSection = 0; roadSection < 3; roadSection++) {
+            const zOffset = roadSection * (roadLength / 3);
             
-            // Create mountain geometry
-            const height = 20 + Math.random() * 30;
-            const radius = 10 + Math.random() * 20;
-            
-            const mountainGeometry = new THREE.ConeGeometry(radius, height, 8);
-            const mountainMaterial = new THREE.MeshPhongMaterial({
-                color: range === 0 ? 0x4682B4 : (range === 1 ? 0x708090 : 0x778899), // Different blue-gray shades
-                flatShading: true
-            });
-            
-            const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
-            
-            // Position the mountain
-            mountain.position.set(
-                position + (Math.random() - 0.5) * 40, // X position with some randomness
-                height / 2 - 5, // Y position (half height to sit on ground)
-                distance + (Math.random() - 0.5) * 50 // Z position with some randomness
-            );
-            
-            mountainGroup.add(mountain);
+            for (let i = 0; i < mountainCount; i++) {
+                // Position along the range
+                const position = (i / mountainCount) * rangeWidth - rangeWidth / 2;
+                
+                // Create mountain geometry
+                const height = 20 + Math.random() * 30;
+                const radius = 10 + Math.random() * 20;
+                
+                const mountainGeometry = new THREE.ConeGeometry(radius, height, 8);
+                const mountainMaterial = new THREE.MeshPhongMaterial({
+                    color: range === 0 ? 0x4682B4 : (range === 1 ? 0x708090 : 0x778899), // Different blue-gray shades
+                    flatShading: true
+                });
+                
+                const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
+                
+                // Position the mountain
+                mountain.position.set(
+                    position + (Math.random() - 0.5) * 60, // X position with more randomness
+                    height / 2 - 5, // Y position (half height to sit on ground)
+                    zOffset + (Math.random() - 0.5) * 100 + distance // Z position with more randomness
+                );
+                
+                mountainGroup.add(mountain);
+            }
         }
     }
     
@@ -232,6 +241,11 @@ function generateRoad() {
         if (i % 17 === 0 || i % 19 === 0) { // Different spacing for right side
             addTree(x + roadWidth / 2 + 5, z, roadGroup); // Right side tree
         }
+        
+        // Add occasional obstacles on the road
+        if (i % 50 === 0 && i > 20) { // Start obstacles after some distance
+            addObstacle(x, z, roadGroup, i);
+        }
     }
     
     scene.add(roadGroup);
@@ -311,6 +325,112 @@ function addTree(x, z, parent) {
     return tree;
 }
 
+// Create an obstacle (rock) on the road
+function addObstacle(x, z, parent, segmentIndex) {
+    // Random position across the road width
+    const offsetX = (Math.random() - 0.5) * (roadWidth - 2);
+    
+    // Create rock geometry
+    const rockGeometry = new THREE.DodecahedronGeometry(0.8, 1);
+    const rockMaterial = new THREE.MeshPhongMaterial({
+        color: 0x808080, // Gray
+        flatShading: true
+    });
+    
+    const rock = new THREE.Mesh(rockGeometry, rockMaterial);
+    
+    // Position the rock
+    rock.position.set(x + offsetX, 0.4, z);
+    rock.rotation.set(
+        Math.random() * Math.PI,
+        Math.random() * Math.PI,
+        Math.random() * Math.PI
+    );
+    
+    // Add collision data
+    rock.userData = {
+        isObstacle: true,
+        radius: 0.8,
+        segmentIndex: segmentIndex
+    };
+    
+    parent.add(rock);
+    obstacles.push(rock);
+    
+    return rock;
+}
+
+// Create explosion effect
+function createExplosion(position) {
+    const particleCount = 50;
+    const explosionGroup = new THREE.Group();
+    
+    for (let i = 0; i < particleCount; i++) {
+        // Create particle geometry
+        const size = 0.1 + Math.random() * 0.2;
+        const geometry = new THREE.BoxGeometry(size, size, size);
+        
+        // Random colors for explosion
+        const colors = [0xff0000, 0xff5500, 0xffaa00, 0xffff00];
+        const material = new THREE.MeshBasicMaterial({
+            color: colors[Math.floor(Math.random() * colors.length)],
+            emissive: 0xff0000
+        });
+        
+        const particle = new THREE.Mesh(geometry, material);
+        
+        // Set random velocity
+        const velocity = new THREE.Vector3(
+            (Math.random() - 0.5) * 0.2,
+            Math.random() * 0.2,
+            (Math.random() - 0.5) * 0.2
+        );
+        
+        particle.userData = { velocity };
+        
+        // Position around car
+        particle.position.set(
+            position.x + (Math.random() - 0.5) * 2,
+            position.y + (Math.random() - 0.5) * 2,
+            position.z + (Math.random() - 0.5) * 2
+        );
+        
+        explosionGroup.add(particle);
+        explosionParticles.push(particle);
+    }
+    
+    scene.add(explosionGroup);
+    return explosionGroup;
+}
+
+// Update explosion particles
+function updateExplosion(deltaTime) {
+    for (let i = 0; i < explosionParticles.length; i++) {
+        const particle = explosionParticles[i];
+        const velocity = particle.userData.velocity;
+        
+        // Apply gravity
+        velocity.y -= 0.01 * deltaTime;
+        
+        // Update position
+        particle.position.x += velocity.x * deltaTime;
+        particle.position.y += velocity.y * deltaTime;
+        particle.position.z += velocity.z * deltaTime;
+        
+        // Rotate particle
+        particle.rotation.x += 0.02 * deltaTime;
+        particle.rotation.y += 0.02 * deltaTime;
+        
+        // Fade out
+        if (particle.material.opacity > 0) {
+            particle.material.opacity -= 0.01 * deltaTime;
+        }
+    }
+    
+    // Remove faded particles
+    explosionParticles = explosionParticles.filter(p => p.material.opacity > 0);
+}
+
 // Set up event listeners
 function setupEventListeners() {
     // Start button
@@ -318,6 +438,9 @@ function setupEventListeners() {
     
     // Stop button
     document.getElementById('stop-button').addEventListener('click', stopGame);
+    
+    // Restart button
+    document.getElementById('restart-button').addEventListener('click', resetGame);
     
     // Debug button
     document.getElementById('toggle-debug').addEventListener('click', toggleDebug);
@@ -411,7 +534,14 @@ function animate(time) {
     lastTime = time;
     
     if (isPlaying) {
-        updateGame(deltaTime);
+        if (!gameOver) {
+            updateGame(deltaTime);
+            checkCollisions();
+        } else {
+            // Update explosion when game over
+            explosionTime += deltaTime;
+            updateExplosion(deltaTime);
+        }
     }
     
     updateDebugInfo();
@@ -471,6 +601,88 @@ function updateGame(deltaTime) {
     if (carDistance > roadLength) {
         carDistance = carDistance % roadLength;
     }
+}
+
+// Check for collisions
+function checkCollisions() {
+    if (gameOver) return;
+    
+    const carRadius = 1; // Approximate car collision radius
+    
+    // Check collision with obstacles
+    for (let i = 0; i < obstacles.length; i++) {
+        const obstacle = obstacles[i];
+        
+        // Only check obstacles in the current segment
+        const obstacleSegment = obstacle.userData.segmentIndex;
+        const currentSegment = Math.floor(carDistance / segmentLength) % (roadLength / segmentLength);
+        
+        if (Math.abs(obstacleSegment - currentSegment) > 5) continue;
+        
+        const dx = car.position.x - obstacle.position.x;
+        const dz = car.position.z - obstacle.position.z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+        
+        if (distance < carRadius + obstacle.userData.radius) {
+            // Collision detected!
+            handleCollision();
+            break;
+        }
+    }
+}
+
+// Handle collision
+function handleCollision() {
+    if (gameOver) return;
+    
+    gameOver = true;
+    explosionTime = 0;
+    
+    // Create explosion at car position
+    createExplosion(car.position.clone());
+    
+    // Hide car
+    car.visible = false;
+    
+    // Show game over message
+    document.getElementById('game-over').style.display = 'flex';
+    
+    // Hide control buttons
+    document.getElementById('start-button').style.display = 'none';
+    document.getElementById('stop-button').style.display = 'none';
+}
+
+// Reset game after collision
+function resetGame() {
+    gameOver = false;
+    carDistance = 0;
+    carPosition = 0;
+    
+    // Show car again
+    car.visible = true;
+    
+    // Reset car position
+    car.position.set(0, 0, 0);
+    
+    // Clear explosion particles
+    for (let i = explosionParticles.length - 1; i >= 0; i--) {
+        const particle = explosionParticles[i];
+        if (particle.parent) {
+            scene.remove(particle.parent);
+        }
+    }
+    explosionParticles = [];
+    
+    // Hide game over message
+    document.getElementById('game-over').style.display = 'none';
+    
+    // Show start button
+    document.getElementById('start-button').style.display = 'block';
+    document.getElementById('stop-button').style.display = 'none';
+    
+    // Reset camera position
+    camera.position.set(0, 2, 0);
+    camera.lookAt(0, 1, 10);
 }
 
 // Initialize the game when the page loads

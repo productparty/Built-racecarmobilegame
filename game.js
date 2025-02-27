@@ -29,6 +29,7 @@ let distanceDriven = 0;  // Total distance in meters
 let lastSpeedIncrease = 0;  // Time tracker for speed increases
 let baseSpeed = 0.05;    // Initial speed
 let speedMultiplier = 1; // Speed multiplier
+let speedIncreaseAmount = 0.2; // Increased from 0.1 to 0.2 for more noticeable speed changes
 
 // Sound effects
 let engineSound, explosionSound;
@@ -127,19 +128,23 @@ function playExplosionSound() {
     // Make sure the sound is loaded and ready
     if (explosionSound) {
         explosionSound.currentTime = 0;
-        explosionSound.volume = 0.7;  // Set an appropriate volume
+        explosionSound.volume = 1.0;  // Increased volume from 0.7 to 1.0
         
-        // Play the explosion sound directly
-        explosionSound.play().catch(error => {
-            console.log("Failed to play explosion sound:", error);
-            
-            // Fallback: Create and play a new Audio instance for more reliable playback
-            const crashSound = new Audio('sounds/car-accident-with-squeal-and-crash-6054.mp3');
-            crashSound.volume = 0.7;
-            crashSound.play().catch(err => {
-                console.log("Fallback audio also failed:", err);
+        // Force play the explosion sound
+        const promise = explosionSound.play();
+        
+        if (promise !== undefined) {
+            promise.catch(error => {
+                console.log("Failed to play explosion sound:", error);
+                
+                // Fallback: Create and play a new Audio instance for more reliable playback
+                const crashSound = new Audio('sounds/car-accident-with-squeal-and-crash-6054.mp3');
+                crashSound.volume = 1.0;
+                crashSound.play().catch(err => {
+                    console.log("Fallback audio also failed:", err);
+                });
             });
-        });
+        }
     }
 }
 
@@ -925,7 +930,7 @@ function updateGame(deltaTime) {
     // Check if it's time to increase speed (every 5 seconds)
     lastSpeedIncrease += deltaTime;
     if (lastSpeedIncrease >= 5000) { // 5000ms = 5 seconds
-        speedMultiplier += 0.1; // Increase speed by 10%
+        speedMultiplier += speedIncreaseAmount; // Use the new variable for speed increase
         speed = baseSpeed * speedMultiplier;
         lastSpeedIncrease = 0; // Reset timer
         
@@ -1027,31 +1032,28 @@ function handleCollision(obstacleType) {
     
     gameOver = true;
     explosionTime = 0;
+    carSpeed = speed; // Store current speed for deceleration
     
     // Stop engine sound first
     stopEngineSound();
     
-    // Play explosion sound immediately
+    // Play explosion sound immediately with no delay
     playExplosionSound();
     
-    // Small delay before visual effects to ensure sound plays
-    setTimeout(() => {
-        // Create explosion at car position
-        const isPotholeCrash = (obstacleType === 'pothole');
-        createExplosion(car.position.clone(), isPotholeCrash);
-        
-        createCarFlames();
-        
-        // Show final distance in miles
-        const finalMiles = (distanceDriven / 1609.34).toFixed(1);
-        const gameOverElement = document.getElementById('game-over');
-        if (gameOverElement) {
-            gameOverElement.classList.add('visible');
-            gameOverElement.innerHTML = `Game Over!<br>Distance: ${finalMiles} mi`;
-        }
-    }, 50);
+    // Create explosion at car position immediately
+    const isPotholeCrash = (obstacleType === 'pothole');
+    createExplosion(car.position.clone(), isPotholeCrash);
     
-    carSpeed = speed;
+    // Create flames immediately
+    createCarFlames();
+    
+    // Show final distance in miles
+    const finalMiles = (distanceDriven / 1609.34).toFixed(1);
+    const gameOverElement = document.getElementById('game-over');
+    if (gameOverElement) {
+        gameOverElement.classList.add('visible');
+        gameOverElement.innerHTML = `Game Over!<br>Distance: ${finalMiles} mi`;
+    }
     
     // Hide control buttons
     document.getElementById('start-button').classList.add('hidden');
@@ -1170,7 +1172,7 @@ function addPotholes() {
 function showSpeedIncreaseNotification() {
     const notification = document.createElement('div');
     notification.className = 'speed-notification';
-    notification.textContent = 'Speed Increased!';
+    notification.textContent = `Speed Increased to ${speedMultiplier.toFixed(1)}x!`;
     document.body.appendChild(notification);
     
     // Remove notification after animation

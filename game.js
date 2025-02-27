@@ -399,10 +399,11 @@ function updateCarPosition(deltaTime) {
         car.rotation.y = Math.atan2(targetX - car.position.x, 10) * 0.2;
     }
     
-    // Update camera to follow car
-    camera.position.x = car.position.x * 0.5;
-    camera.position.z = car.position.z - 10;
-    camera.lookAt(car.position.x, 0, car.position.z + 10);
+    // Update camera to follow car - position directly behind and slightly above
+    camera.position.x = car.position.x;
+    camera.position.y = car.position.y + 3;
+    camera.position.z = car.position.z - 7;
+    camera.lookAt(car.position.x, car.position.y, car.position.z + 15);
 }
 
 function checkCollisions() {
@@ -455,36 +456,110 @@ function checkCollisions() {
 
 function createExplosion(position) {
     // Create particle system for explosion
-    const particleCount = 50;
+    const particleCount = 100;
     const particles = new THREE.Group();
     
-    const particleGeometry = new THREE.SphereGeometry(0.2, 8, 8);
-    const particleMaterial = new THREE.MeshBasicMaterial({ color: 0xff5500 });
+    // Create flame particles
+    const flameGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+    const flameMaterial = new THREE.MeshBasicMaterial({ color: 0xff5500 });
+    
+    // Create smoke particles
+    const smokeGeometry = new THREE.SphereGeometry(0.4, 8, 8);
+    const smokeMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x222222,
+        transparent: true,
+        opacity: 0.7
+    });
+    
+    // Create spark particles
+    const sparkGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+    const sparkMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
     
     for (let i = 0; i < particleCount; i++) {
-        const particle = new THREE.Mesh(particleGeometry, particleMaterial);
-        particle.position.copy(position);
+        // Determine particle type
+        let particle;
+        if (i < particleCount * 0.5) {
+            // Flame
+            particle = new THREE.Mesh(flameGeometry, flameMaterial);
+        } else if (i < particleCount * 0.8) {
+            // Smoke
+            particle = new THREE.Mesh(smokeGeometry, smokeMaterial);
+        } else {
+            // Spark
+            particle = new THREE.Mesh(sparkGeometry, sparkMaterial);
+        }
         
-        // Random velocity
-        particle.userData.velocity = new THREE.Vector3(
-            (Math.random() - 0.5) * 0.2,
-            Math.random() * 0.2,
-            (Math.random() - 0.5) * 0.2
+        // Position at car with slight randomness
+        particle.position.set(
+            position.x + (Math.random() - 0.5) * 2,
+            position.y + (Math.random() - 0.5) * 2,
+            position.z + (Math.random() - 0.5) * 2
         );
+        
+        // Random velocity - more upward for smoke, more outward for flames/sparks
+        const speed = 0.05 + Math.random() * 0.1;
+        const angle = Math.random() * Math.PI * 2;
+        const upwardBias = particle.material === smokeMaterial ? 0.8 : 0.3;
+        
+        particle.userData.velocity = new THREE.Vector3(
+            Math.cos(angle) * speed,
+            Math.random() * speed * 2 * upwardBias,
+            Math.sin(angle) * speed
+        );
+        
+        // Add lifetime for particles
+        particle.userData.lifetime = 2 + Math.random() * 2;
+        particle.userData.age = 0;
         
         particles.add(particle);
     }
     
     scene.add(particles);
     
+    // Add car damage visual effect
+    car.children.forEach(part => {
+        if (part.material && part.material.color) {
+            // Darken the car parts
+            part.material.color.offsetHSL(0, 0, -0.3);
+        }
+    });
+    
     // Animate explosion
-    const animateExplosion = function() {
+    const animateExplosion = function(time) {
+        let allDead = true;
+        
         particles.children.forEach(particle => {
+            // Update position
             particle.position.add(particle.userData.velocity);
-            particle.userData.velocity.y -= 0.01; // Gravity
+            
+            // Apply gravity and drag
+            particle.userData.velocity.y -= 0.001;
+            particle.userData.velocity.multiplyScalar(0.98);
+            
+            // Update age
+            particle.userData.age += 0.016;
+            
+            // Handle particle aging
+            if (particle.userData.age < particle.userData.lifetime) {
+                allDead = false;
+                
+                // Fade out smoke
+                if (particle.material.opacity) {
+                    particle.material.opacity = Math.max(0, 1 - (particle.userData.age / particle.userData.lifetime));
+                }
+                
+                // Shrink flames
+                if (particle.material === flameMaterial) {
+                    const scale = Math.max(0.1, 1 - (particle.userData.age / particle.userData.lifetime));
+                    particle.scale.set(scale, scale, scale);
+                }
+            } else {
+                // Remove dead particles
+                particles.remove(particle);
+            }
         });
         
-        if (particles.children.length > 0) {
+        if (!allDead && particles.children.length > 0) {
             requestAnimationFrame(animateExplosion);
         } else {
             scene.remove(particles);
@@ -492,11 +567,6 @@ function createExplosion(position) {
     };
     
     animateExplosion();
-    
-    // Remove particles after 2 seconds
-    setTimeout(() => {
-        scene.remove(particles);
-    }, 2000);
 }
 
 function setupEventListeners() {

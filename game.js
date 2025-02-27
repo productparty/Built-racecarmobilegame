@@ -77,13 +77,13 @@ function init() {
     // Set up event listeners
     setupEventListeners();
     
-    // Add distance counter to the UI with updated position
+    // Add distance counter to the UI with updated position (right side)
     const distanceCounter = document.createElement('div');
     distanceCounter.id = 'distance-counter';
     distanceCounter.style.cssText = `
         position: fixed;
-        left: 20px;
-        top: 60px;  // Increased top position to be below sound button
+        right: 20px;  // Changed from left to right
+        top: 20px;
         color: white;
         font-size: 24px;
         font-family: Arial, sans-serif;
@@ -134,10 +134,18 @@ function stopEngineSound() {
 function playExplosionSound() {
     if (!soundEnabled) return;
     
-    explosionSound.currentTime = 0;
-    explosionSound.play().catch(error => {
-        console.log("Failed to play explosion sound:", error);
-    });
+    // Make sure the sound is loaded and ready
+    if (explosionSound) {
+        explosionSound.currentTime = 0;
+        explosionSound.volume = 0.7;  // Set an appropriate volume
+        
+        // Create and play a new Audio instance for more reliable playback
+        const crashSound = new Audio(explosionSound.src);
+        crashSound.volume = 0.7;
+        crashSound.play().catch(error => {
+            console.log("Failed to play explosion sound:", error);
+        });
+    }
 }
 
 // Create distant mountains for scenery
@@ -1020,25 +1028,29 @@ function handleCollision(obstacleType) {
     gameOver = true;
     explosionTime = 0;
     
-    // Show final distance in miles
-    const finalMiles = (distanceDriven / 1609.34).toFixed(1);
-    const gameOverElement = document.getElementById('game-over');
-    if (gameOverElement) {
-        gameOverElement.style.display = 'block';
-        gameOverElement.innerHTML = `Game Over!<br>Distance: ${finalMiles} mi`;
-    }
-    
-    // Immediately stop the engine sound
+    // Stop engine sound first
     stopEngineSound();
     
     // Play explosion sound immediately
     playExplosionSound();
     
-    // Create explosion at car position
-    const isPotholeCrash = (obstacleType === 'pothole');
-    createExplosion(car.position.clone(), isPotholeCrash);
+    // Small delay before visual effects to ensure sound plays
+    setTimeout(() => {
+        // Create explosion at car position
+        const isPotholeCrash = (obstacleType === 'pothole');
+        createExplosion(car.position.clone(), isPotholeCrash);
+        
+        createCarFlames();
+        
+        // Show final distance in miles
+        const finalMiles = (distanceDriven / 1609.34).toFixed(1);
+        const gameOverElement = document.getElementById('game-over');
+        if (gameOverElement) {
+            gameOverElement.style.display = 'block';
+            gameOverElement.innerHTML = `Game Over!<br>Distance: ${finalMiles} mi`;
+        }
+    }, 50);
     
-    createCarFlames();
     carSpeed = speed;
     
     document.getElementById('start-button').style.display = 'none';

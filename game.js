@@ -20,8 +20,10 @@ let trees = []; // Array to store tree objects
 let obstacles = []; // Array to store obstacles
 let roadMountains = []; // Array to store mountains on the road
 let explosionParticles = []; // Array for explosion particles
+let flames = []; // Array for car flames
 let gameOver = false;
 let explosionTime = 0;
+let carSpeed = 0; // Current car speed for deceleration
 
 // Initialize the game
 function init() {
@@ -110,10 +112,10 @@ function createMountains() {
 
 // Add mountains that partially block the road
 function addRoadMountains() {
-    // Add mountains at intervals along the road
-    for (let i = 100; i < roadLength; i += 150) {
+    // Add mountains at intervals along the road - less frequently now
+    for (let i = 200; i < roadLength; i += 300) {
         // Alternate sides of the road
-        const side = (i % 300 < 150) ? 1 : -1;
+        const side = (i % 600 < 300) ? 1 : -1;
         
         // Create mountain geometry
         const height = 5 + Math.random() * 10;
@@ -131,13 +133,13 @@ function addRoadMountains() {
         const segmentIndex = Math.floor(i / segmentLength);
         const roadX = segmentIndex < roadCurve.length ? roadCurve[segmentIndex] : 0;
         
-        // Position the mountain partially on the road
+        // Position the mountain less on the road
         // Side determines which side of the road the mountain is on
         const roadEdge = roadX + (side * roadWidth / 2);
-        const inwardOffset = radius * 0.7; // How far the mountain extends onto the road
+        const inwardOffset = radius * 0.4; // Reduced how far the mountain extends onto the road
         
         mountain.position.set(
-            roadEdge - (side * inwardOffset), // Position partially on the road
+            roadEdge - (side * inwardOffset), // Position less on the road
             height / 2 - 0.5, // Y position (half height to sit on ground)
             i // Z position along the road
         );
@@ -145,7 +147,7 @@ function addRoadMountains() {
         // Add collision data
         mountain.userData = {
             isObstacle: true,
-            radius: radius * 0.8, // Slightly smaller collision radius than visual
+            radius: radius * 0.7, // Slightly smaller collision radius than visual
             segmentIndex: segmentIndex,
             type: 'mountain'
         };
@@ -197,6 +199,80 @@ function createCar() {
     carBody.position.set(0, 0, 0);
     scene.add(carBody);
     car = carBody;
+}
+
+// Create flames for the car
+function createCarFlames() {
+    // Clear any existing flames
+    flames.forEach(flame => {
+        if (flame.parent) flame.parent.remove(flame);
+    });
+    flames = [];
+    
+    // Create flame particles
+    const flameCount = 20;
+    const flameColors = [0xff0000, 0xff5500, 0xff8800, 0xffaa00, 0xffff00];
+    
+    for (let i = 0; i < flameCount; i++) {
+        const size = 0.2 + Math.random() * 0.4;
+        const geometry = new THREE.SphereGeometry(size, 8, 8);
+        const colorIndex = Math.floor(Math.random() * flameColors.length);
+        const material = new THREE.MeshBasicMaterial({
+            color: flameColors[colorIndex],
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        const flame = new THREE.Mesh(geometry, material);
+        
+        // Position flames around the car
+        flame.position.set(
+            (Math.random() - 0.5) * 1.5,
+            Math.random() * 0.5 + 0.5,
+            (Math.random() - 0.5) * 2
+        );
+        
+        // Add flame properties
+        flame.userData = {
+            originalY: flame.position.y,
+            phase: Math.random() * Math.PI * 2,
+            speed: 0.05 + Math.random() * 0.05,
+            amplitude: 0.1 + Math.random() * 0.2,
+            growRate: 0.01 + Math.random() * 0.02,
+            maxSize: size * (1.5 + Math.random()),
+            originalSize: size
+        };
+        
+        car.add(flame);
+        flames.push(flame);
+    }
+}
+
+// Update flames animation
+function updateFlames(deltaTime) {
+    flames.forEach(flame => {
+        // Animate flame position (flickering)
+        flame.userData.phase += flame.userData.speed * deltaTime;
+        flame.position.y = flame.userData.originalY + 
+                          Math.sin(flame.userData.phase) * flame.userData.amplitude;
+        
+        // Pulse size
+        const sizeScale = 1 + 0.2 * Math.sin(flame.userData.phase * 2);
+        flame.scale.set(sizeScale, sizeScale, sizeScale);
+        
+        // Random color changes for flickering effect
+        if (Math.random() > 0.9) {
+            const flameColors = [0xff0000, 0xff5500, 0xff8800, 0xffaa00, 0xffff00];
+            const colorIndex = Math.floor(Math.random() * flameColors.length);
+            flame.material.color.setHex(flameColors[colorIndex]);
+        }
+        
+        // Grow flames over time if still growing
+        if (flame.scale.x < flame.userData.maxSize) {
+            const newScale = flame.scale.x + flame.userData.growRate * deltaTime;
+            flame.scale.set(newScale, newScale, newScale);
+        }
+    });
 }
 
 // Generate a curved road
@@ -482,7 +558,9 @@ function createExplosion(position, isMountainCrash = false) {
             
         const material = new THREE.MeshBasicMaterial({
             color: colors[Math.floor(Math.random() * colors.length)],
-            emissive: 0xff0000
+            emissive: 0xff0000,
+            transparent: true,
+            opacity: 1.0
         });
         
         const particle = new THREE.Mesh(geometry, material);
@@ -686,6 +764,26 @@ function animate(time) {
             // Update explosion when game over
             explosionTime += deltaTime;
             updateExplosion(deltaTime);
+            
+            // Update flames on the car
+            updateFlames(deltaTime);
+            
+            // Slow down the car gradually
+            if (carSpeed > 0) {
+                carSpeed = Math.max(0, carSpeed - 0.0001 * deltaTime);
+                carDistance += carSpeed * deltaTime;
+                
+                // Update car position during slowdown
+                const currentSegment = Math.floor(carDistance / segmentLength) % (roadLength / segmentLength);
+                const targetX = roadCurve[currentSegment];
+                car.position.z = carDistance % roadLength;
+                car.position.x = targetX + carPosition;
+                
+                // Update camera to follow car during slowdown
+                camera.position.x = car.position.x;
+                camera.position.z = car.position.z - 5;
+                camera.lookAt(car.position.x, car.position.y + 1, car.position.z + 10);
+            }
         }
     }
     
@@ -791,27 +889,24 @@ function handleCollision(obstacleType) {
     const isMountainCrash = (obstacleType === 'mountain');
     createExplosion(car.position.clone(), isMountainCrash);
     
-    // Hide car
-    car.visible = false;
+    // Add flames to the car instead of hiding it
+    createCarFlames();
     
-    // Show game over message
+    // Gradually slow down the car
+    carSpeed = speed;
+    
+    // Hide game over message - we're not using it anymore
     const gameOverElement = document.getElementById('game-over');
-    const crashTitle = gameOverElement.querySelector('h2');
-    const crashMessage = gameOverElement.querySelector('p');
-    
-    if (obstacleType === 'mountain') {
-        crashTitle.textContent = 'MOUNTAIN CRASH!';
-        crashMessage.textContent = 'Your car exploded on a mountain!';
-    } else {
-        crashTitle.textContent = 'CRASH!';
-        crashMessage.textContent = 'Your car exploded!';
-    }
-    
-    gameOverElement.style.display = 'flex';
+    gameOverElement.style.display = 'none';
     
     // Hide control buttons
     document.getElementById('start-button').style.display = 'none';
     document.getElementById('stop-button').style.display = 'none';
+    
+    // Show restart button after a delay
+    setTimeout(() => {
+        document.getElementById('restart-button').style.display = 'block';
+    }, 3000);
 }
 
 // Reset game after collision
@@ -819,9 +914,13 @@ function resetGame() {
     gameOver = false;
     carDistance = 0;
     carPosition = 0;
+    carSpeed = 0;
     
-    // Show car again
-    car.visible = true;
+    // Remove flames
+    flames.forEach(flame => {
+        if (flame.parent) flame.parent.remove(flame);
+    });
+    flames = [];
     
     // Reset car position
     car.position.set(0, 0, 0);
@@ -829,14 +928,12 @@ function resetGame() {
     // Clear explosion particles
     for (let i = explosionParticles.length - 1; i >= 0; i--) {
         const particle = explosionParticles[i];
-        if (particle.parent) {
-            scene.remove(particle.parent);
-        }
+        scene.remove(particle);
     }
     explosionParticles = [];
     
-    // Hide game over message
-    document.getElementById('game-over').style.display = 'none';
+    // Hide restart button
+    document.getElementById('restart-button').style.display = 'none';
     
     // Show start button
     document.getElementById('start-button').style.display = 'block';

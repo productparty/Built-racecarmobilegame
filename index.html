@@ -87,19 +87,51 @@
                             // WebXR's requestReferenceSpace only works if the corresponding feature
                             // was requested at session creation time.
                             const sessionInit = { optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers'] };
-                            navigator.xr.requestSession('immersive-vr', sessionInit).then(onSessionStarted);
+                            navigator.xr.requestSession('immersive-vr', sessionInit)
+                                .then(onSessionStarted)
+                                .catch(error => {
+                                    console.error('Error starting VR session:', error);
+                                    document.getElementById('debug-status').innerHTML += 
+                                        `<div style="color:red">VR Error: ${error.message}</div>`;
+                                    alert(`Error starting VR: ${error.message}`);
+                                });
                         } else {
                             currentSession.end();
                         }
                     };
                 }
                 
+                function showWebXRNotFound() {
+                    button.style.display = '';
+                    button.style.cursor = 'auto';
+                    button.style.padding = '12px';
+                    button.style.border = '1px solid #fff';
+                    button.style.borderRadius = '4px';
+                    button.style.background = 'rgba(0,0,0,0.1)';
+                    button.style.color = '#fff';
+                    button.style.font = 'normal 13px sans-serif';
+                    button.style.textAlign = 'center';
+                    button.style.opacity = '0.5';
+                    button.style.outline = 'none';
+                    button.style.zIndex = '999';
+                    button.textContent = 'VR NOT SUPPORTED';
+                }
+                
                 if ('xr' in navigator) {
-                    navigator.xr.isSessionSupported('immersive-vr').then(function(supported) {
-                        supported ? showEnterVR() : showWebXRNotFound();
-                    });
+                    navigator.xr.isSessionSupported('immersive-vr')
+                        .then(function(supported) {
+                            supported ? showEnterVR() : showWebXRNotFound();
+                        })
+                        .catch(function(error) {
+                            console.error('Error checking VR support:', error);
+                            document.getElementById('debug-status').innerHTML += 
+                                `<div style="color:red">VR Support Error: ${error.message}</div>`;
+                            showWebXRNotFound();
+                        });
                 } else {
                     button.textContent = 'VR NOT SUPPORTED';
+                    document.getElementById('debug-status').innerHTML += 
+                        '<div style="color:orange">WebXR not available in this browser</div>';
                 }
                 
                 return button;

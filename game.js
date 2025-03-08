@@ -9,7 +9,7 @@ let screenOrientation = window.orientation || 0;
 let lastTime = 0;
 let carPosition = 0;
 let roadLength = 1000;
-let roadWidth = 10;
+let roadWidth = 15;
 let segmentLength = 10;
 let cameraHeight = 2;
 let speed = 0.02;
@@ -469,65 +469,130 @@ function generateRoad() {
         scene.remove(road);
     }
     
-    // Generate road curve
-    let x = 0;
-    let z = 0;
-    let direction = 0;
+    // Create road geometry
+    const roadGeometry = new THREE.BufferGeometry();
+    const vertices = [];
+    const uvs = [];
     
-    for (let i = 0; i < roadLength / segmentLength; i++) {
-        // Gradually change direction for curves
-        if (i % 20 === 0) {
-            direction = Math.random() * 0.3 - 0.15;
-        }
+    // Generate road curve with smoother turns
+    for (let i = 0; i < roadLength; i += segmentLength) {
+        // Create a smoother curve for the road
+        // Use sine waves with different frequencies and amplitudes
+        const curveX = Math.sin(i * 0.01) * 10 + Math.sin(i * 0.02) * 5;
         
-        x += direction * segmentLength;
-        z += segmentLength;
+        // Store road curve for collision detection
+        roadCurve.push(new THREE.Vector2(curveX, i));
         
-        roadCurve.push({ x, z });
+        // Create road segment vertices
+        const halfWidth = roadWidth / 2;
+        
+        // Left edge
+        vertices.push(curveX - halfWidth, 0, i);
+        uvs.push(0, i / roadLength);
+        
+        // Right edge
+        vertices.push(curveX + halfWidth, 0, i);
+        uvs.push(1, i / roadLength);
     }
     
-    // Create road segments
-    const roadGroup = new THREE.Group();
+    // Create faces (triangles) for the road
+    const indices = [];
+    for (let i = 0; i < roadLength / segmentLength * 2 - 2; i += 2) {
+        // First triangle
+        indices.push(i, i + 1, i + 2);
+        
+        // Second triangle
+        indices.push(i + 1, i + 3, i + 2);
+    }
     
-    for (let i = 0; i < roadCurve.length - 1; i++) {
-        const p1 = roadCurve[i];
-        const p2 = roadCurve[i + 1];
-        
-        // Calculate segment direction
-        const dx = p2.x - p1.x;
-        const dz = p2.z - p1.z;
-        const angle = Math.atan2(dx, dz);
-        
-        // Create segment
-        const segmentGeometry = new THREE.PlaneGeometry(roadWidth, segmentLength);
-        const segmentMaterial = new THREE.MeshPhongMaterial({ 
-            color: 0x333333,
-            side: THREE.DoubleSide
-        });
-        const segment = new THREE.Mesh(segmentGeometry, segmentMaterial);
-        
-        // Position and rotate segment
-        segment.position.set(p1.x + dx/2, 0, p1.z + dz/2);
-        segment.rotation.set(-Math.PI/2, 0, angle);
-        
-        roadGroup.add(segment);
-        roadSegments.push(segment);
-        
-        // Add road markings
-        if (i % 5 === 0) {
-            const markingGeometry = new THREE.PlaneGeometry(0.5, 2);
-            const markingMaterial = new THREE.MeshPhongMaterial({ color: 0xFFFFFF });
+    // Set geometry attributes
+    roadGeometry.setIndex(indices);
+    roadGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    roadGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    roadGeometry.computeVertexNormals();
+    
+    // Create road material
+    const roadMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.8,
+        metalness: 0.2
+    });
+    
+    // Create road mesh
+    road = new THREE.Mesh(roadGeometry, roadMaterial);
+    scene.add(road);
+    
+    // Add road markings
+    addRoadMarkings();
+}
+
+function addRoadMarkings() {
+    // Create road markings (center line)
+    const markingsGroup = new THREE.Group();
+    
+    // Create dashed line down the center of the road
+    for (let i = 0; i < roadLength; i += 20) {
+        // Get road curve position at this point
+        const segmentIndex = Math.floor(i / segmentLength);
+        if (segmentIndex < roadCurve.length) {
+            const curvePoint = roadCurve[segmentIndex];
+            
+            // Create marking geometry
+            const markingGeometry = new THREE.PlaneGeometry(0.5, 5);
+            const markingMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xFFFFFF,
+                roughness: 0.5,
+                metalness: 0.2
+            });
+            
             const marking = new THREE.Mesh(markingGeometry, markingMaterial);
             
-            marking.position.set(p1.x + dx/2, 0.01, p1.z + dz/2);
-            marking.rotation.set(-Math.PI/2, 0, angle);
+            // Position marking at the center of the road
+            marking.position.set(curvePoint.x, 0.01, i);
+            marking.rotation.x = -Math.PI / 2;
             
-            roadGroup.add(marking);
+            markingsGroup.add(marking);
         }
     }
     
-    road = roadGroup;
-    scene.add(road);
+    // Add edge markings
+    for (let i = 0; i < roadLength; i += 40) {
+        // Get road curve position at this point
+        const segmentIndex = Math.floor(i / segmentLength);
+        if (segmentIndex < roadCurve.length) {
+            const curvePoint = roadCurve[segmentIndex];
+            const halfWidth = roadWidth / 2;
+            
+            // Left edge marking
+            const leftMarkingGeometry = new THREE.PlaneGeometry(0.5, 10);
+            const leftMarkingMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xFFFF00,
+                roughness: 0.5,
+                metalness: 0.2
+            });
+            
+            const leftMarking = new THREE.Mesh(leftMarkingGeometry, leftMarkingMaterial);
+            leftMarking.position.set(curvePoint.x - halfWidth + 0.5, 0.02, i);
+            leftMarking.rotation.x = -Math.PI / 2;
+            
+            // Right edge marking
+            const rightMarkingGeometry = new THREE.PlaneGeometry(0.5, 10);
+            const rightMarkingMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xFFFF00,
+                roughness: 0.5,
+                metalness: 0.2
+            });
+            
+            const rightMarking = new THREE.Mesh(rightMarkingGeometry, rightMarkingMaterial);
+            rightMarking.position.set(curvePoint.x + halfWidth - 0.5, 0.02, i);
+            rightMarking.rotation.x = -Math.PI / 2;
+            
+            markingsGroup.add(leftMarking);
+            markingsGroup.add(rightMarking);
+        }
+    }
+    
+    scene.add(markingsGroup);
 }
 
 function createCar() {
@@ -613,9 +678,21 @@ function createCar() {
     rightHeadlight.userData.originalColor = rightHeadlight.material.color.clone();
     car.add(rightHeadlight);
     
-    // Position car
+    // Position car at the start of the road
     car.position.set(0, 0.4, 0);
     scene.add(car);
+    
+    // Reset car position and rotation
+    resetCarPosition();
+}
+
+// Function to reset car position and rotation
+function resetCarPosition() {
+    car.position.set(0, 0.4, 0);
+    car.rotation.set(0, 0, 0);
+    carPosition = 0;
+    carDistance = 0;
+    speed = 0.02;
 }
 
 function createMountains() {
@@ -855,17 +932,17 @@ function updateCarPosition(deltaTime) {
             
             // Apply tilt to car position
             if (adjustedTilt !== null) {
-                carPosition += adjustedTilt * tiltSensitivity;
+                carPosition -= adjustedTilt * tiltSensitivity; // Reversed direction to match camera perspective
             }
         }
         
-        // Use keyboard for steering on desktop - FIXED DIRECTION
+        // Use keyboard for steering on desktop - FIXED DIRECTION FOR THIRD-PERSON VIEW
         const keyboardSensitivity = 0.2;
         if (keys.ArrowLeft || keys.a) {
-            carPosition -= keyboardSensitivity; // Move left when left arrow pressed
+            carPosition -= keyboardSensitivity; // Move left when left arrow pressed (from driver's perspective)
         }
         if (keys.ArrowRight || keys.d) {
-            carPosition += keyboardSensitivity; // Move right when right arrow pressed
+            carPosition += keyboardSensitivity; // Move right when right arrow pressed (from driver's perspective)
         }
         
         // Use keyboard for acceleration/deceleration
@@ -881,34 +958,38 @@ function updateCarPosition(deltaTime) {
     const maxPosition = roadWidth / 2 - 1;
     carPosition = Math.max(-maxPosition, Math.min(carPosition, maxPosition));
     
-    // Update car position
+    // Update car position - MOVE THE CAR, DON'T JUST TILT IT
     car.position.x = carPosition;
     
-    // Tilt car based on steering
-    car.rotation.z = -carPosition * 0.1; // Tilt car when turning
-    car.rotation.y = carPosition * 0.05; // Slight yaw when turning
-    
-    // No need to update camera position here, it's done in animate()
+    // Apply minimal visual tilt for feedback (much less than before)
+    car.rotation.z = -carPosition * 0.05; // Reduced tilt effect
+    car.rotation.y = carPosition * 0.02; // Reduced yaw effect
 }
 
 function checkCollisions() {
     // Check for collisions with obstacles
     for (const obstacle of obstacles) {
+        // Calculate distance between car and obstacle
         const distance = car.position.distanceTo(obstacle.position);
+        
+        // If distance is less than collision threshold, handle crash
         if (distance < 2) {
             handleCrash('Crashed! Press "Try Again" to continue.');
-            break;
+            return;
         }
     }
     
     // Check if car is off the road
+    // Get current road segment
     const segmentIndex = Math.floor(car.position.z / segmentLength);
     if (segmentIndex >= 0 && segmentIndex < roadCurve.length) {
-        const roadPoint = roadCurve[segmentIndex];
-        const distanceFromCenter = Math.abs(car.position.x - roadPoint.x);
+        const roadCenterX = roadCurve[segmentIndex].x;
+        const distanceFromCenter = Math.abs(car.position.x - roadCenterX);
         
-        if (distanceFromCenter > roadWidth / 2 + 1) {
+        // If car is too far from road center, handle crash
+        if (distanceFromCenter > roadWidth / 2) {
             handleCrash('Off road! Press "Try Again" to continue.');
+            return;
         }
     }
 }
@@ -1063,8 +1144,12 @@ function setupEventListeners() {
             gameOver = false;
             document.getElementById('game-over').classList.remove('visible');
             
-            // Reset car appearance when starting
+            // Reset car position and appearance
+            resetCarPosition();
             resetCarAppearance();
+            
+            // Clear obstacles near the starting position
+            clearNearbyObstacles();
             
             // Start engine sound
             if (soundEnabled && engineSound) {
@@ -1111,9 +1196,9 @@ function setupEventListeners() {
     document.getElementById('restart-button').addEventListener('click', () => {
         debugLog("Restart button clicked");
         
-        // Reset car position
-        car.position.set(0, 0.4, 0);
-        carPosition = 0;
+        // Reset car position and appearance
+        resetCarPosition();
+        resetCarAppearance();
         
         // Reset camera
         camera.position.set(0, 3, -5);
@@ -1122,17 +1207,13 @@ function setupEventListeners() {
         // Reset game state
         isPlaying = false;
         gameOver = false;
-        speed = 0.02; // Reset to initial slower speed
-        distanceCounter = 0;
-        carDistance = 0;
-        updateDistanceCounter(); // Update the display
         document.getElementById('game-over').classList.remove('visible');
         
         // Clear obstacles near the starting position
         clearNearbyObstacles();
         
-        // Reset car appearance (remove damage effects)
-        resetCarAppearance();
+        // Update distance counter
+        updateDistanceCounter();
         
         // Stop any sounds
         if (soundEnabled) {
@@ -1149,7 +1230,7 @@ function setupEventListeners() {
         // Hide restart button
         document.getElementById('restart-button').style.display = 'none';
         
-        // Start the game again
+        // Start the game again after a short delay
         setTimeout(() => {
             isPlaying = true;
             if (soundEnabled && engineSound) {
@@ -1227,7 +1308,45 @@ function setupEventListeners() {
             // Enter VR mode if supported
             if (renderer && renderer.xr && renderer.xr.enabled) {
                 debugLog("Attempting to enter VR mode");
-                renderer.xr.getSession() || renderer.xr.getController(0).dispatchEvent({ type: 'select' });
+                
+                // Create a direct VR button click
+                try {
+                    // Check if VR is supported
+                    if (navigator.xr) {
+                        navigator.xr.isSessionSupported('immersive-vr')
+                            .then(supported => {
+                                if (supported) {
+                                    // Request a VR session directly
+                                    const sessionInit = { 
+                                        optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers'] 
+                                    };
+                                    
+                                    navigator.xr.requestSession('immersive-vr', sessionInit)
+                                        .then(session => {
+                                            debugLog("VR session created successfully");
+                                            renderer.xr.setSession(session);
+                                        })
+                                        .catch(error => {
+                                            debugLog("Error starting VR session: " + error.message);
+                                            alert("Error starting VR: " + error.message);
+                                        });
+                                } else {
+                                    debugLog("VR not supported on this device");
+                                    alert("VR is not supported on this device");
+                                }
+                            })
+                            .catch(error => {
+                                debugLog("Error checking VR support: " + error.message);
+                                alert("Error checking VR support: " + error.message);
+                            });
+                    } else {
+                        debugLog("WebXR not available in this browser");
+                        alert("WebXR is not available in this browser");
+                    }
+                } catch (error) {
+                    debugLog("Error entering VR: " + error.message);
+                    alert("Error entering VR: " + error.message);
+                }
             } else {
                 debugLog("WebXR not supported or not enabled");
                 alert("WebXR is not supported in this browser or device");

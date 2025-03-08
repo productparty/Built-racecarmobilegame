@@ -35,9 +35,93 @@
     
     <!-- Load Three.js libraries directly (non-module approach) -->
     <script src="https://unpkg.com/three@0.147.0/build/three.min.js"></script>
-    <script src="https://unpkg.com/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://unpkg.com/three@0.147.0/examples/js/webxr/VRButton.js"></script>
-    <script src="https://unpkg.com/three@0.147.0/examples/js/webxr/XRControllerModelFactory.js"></script>
+    
+    <!-- Create custom VRButton implementation -->
+    <script>
+        // Simple VRButton implementation
+        const VRButton = {
+            createButton: function(renderer) {
+                const button = document.createElement('button');
+                button.style.display = 'none';
+                
+                function showEnterVR() {
+                    let currentSession = null;
+                    
+                    async function onSessionStarted(session) {
+                        session.addEventListener('end', onSessionEnded);
+                        await renderer.xr.setSession(session);
+                        button.textContent = 'EXIT VR';
+                        currentSession = session;
+                    }
+                    
+                    function onSessionEnded() {
+                        currentSession.removeEventListener('end', onSessionEnded);
+                        button.textContent = 'ENTER VR';
+                        currentSession = null;
+                    }
+                    
+                    button.style.display = '';
+                    button.style.cursor = 'pointer';
+                    button.style.padding = '12px';
+                    button.style.border = '1px solid #fff';
+                    button.style.borderRadius = '4px';
+                    button.style.background = 'rgba(0,0,0,0.1)';
+                    button.style.color = '#fff';
+                    button.style.font = 'normal 13px sans-serif';
+                    button.style.textAlign = 'center';
+                    button.style.opacity = '0.5';
+                    button.style.outline = 'none';
+                    button.style.zIndex = '999';
+                    button.textContent = 'ENTER VR';
+                    
+                    button.onmouseenter = function() {
+                        button.style.opacity = '1.0';
+                    };
+                    
+                    button.onmouseleave = function() {
+                        button.style.opacity = '0.5';
+                    };
+                    
+                    button.onclick = function() {
+                        if (currentSession === null) {
+                            // WebXR's requestReferenceSpace only works if the corresponding feature
+                            // was requested at session creation time.
+                            const sessionInit = { optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers'] };
+                            navigator.xr.requestSession('immersive-vr', sessionInit).then(onSessionStarted);
+                        } else {
+                            currentSession.end();
+                        }
+                    };
+                }
+                
+                if ('xr' in navigator) {
+                    navigator.xr.isSessionSupported('immersive-vr').then(function(supported) {
+                        supported ? showEnterVR() : showWebXRNotFound();
+                    });
+                } else {
+                    button.textContent = 'VR NOT SUPPORTED';
+                }
+                
+                return button;
+            }
+        };
+        
+        // Simple XRControllerModelFactory implementation
+        const XRControllerModelFactory = function() {
+            this.createControllerModel = function(controller) {
+                const geometry = new THREE.BoxGeometry(0.03, 0.1, 0.03);
+                const material = new THREE.MeshBasicMaterial({color: 0x0000ff});
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.position.z = -0.05;
+                mesh.rotation.x = -Math.PI / 4;
+                return mesh;
+            };
+            return this;
+        };
+        
+        console.log("Custom VR implementations loaded");
+        document.getElementById('debug-status').innerHTML += '<div style="color:green">Custom VR implementations loaded</div>';
+    </script>
     
     <!-- Debug logging -->
     <script>

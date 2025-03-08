@@ -711,11 +711,14 @@ function loadSounds() {
 }
 
 function createDistanceCounter() {
-    // Create distance counter element
-    const counter = document.createElement('div');
-    counter.id = 'distance-counter';
-    counter.textContent = 'Distance: 0.00 miles';
-    document.body.appendChild(counter);
+    // Create distance counter element if it doesn't exist
+    if (!document.getElementById('distance-counter')) {
+        const distanceCounter = document.createElement('div');
+        distanceCounter.id = 'distance-counter';
+        distanceCounter.textContent = 'Distance: 0m';
+        document.body.appendChild(distanceCounter);
+        debugLog("Distance counter created");
+    }
 }
 
 function animate(time) {
@@ -741,6 +744,13 @@ function animate(time) {
         // Move car forward
         carDistance += speed * deltaTime * 1000;
         
+        // Move car forward in the scene
+        car.position.z += speed * deltaTime * 1000;
+        
+        // Update camera to follow car
+        camera.position.z = car.position.z - 10;
+        camera.lookAt(car.position.x, car.position.y, car.position.z + 10);
+        
         // Update distance counter
         distanceCounter = Math.floor(carDistance / 10);
         updateDistanceCounter();
@@ -752,6 +762,15 @@ function animate(time) {
         if (carDistance > roadLength - 200 && !needsRoadExtension) {
             needsRoadExtension = true;
             extendRoad();
+        }
+        
+        // Debug info
+        if (debugMode) {
+            document.getElementById('debug-info').textContent = 
+                `Speed: ${speed.toFixed(3)}\n` +
+                `Distance: ${distanceCounter}\n` +
+                `Car Z: ${car.position.z.toFixed(2)}\n` +
+                `Car X: ${car.position.x.toFixed(2)}`;
         }
     }
     
@@ -767,9 +786,13 @@ function animate(time) {
 }
 
 function updateDistanceCounter() {
-    // Convert meters to miles and update the display
-    const miles = (distanceCounter * 0.000621371).toFixed(2);
-    document.getElementById('distance-counter').textContent = `Distance: ${miles} miles`;
+    const distanceElement = document.getElementById('distance-counter');
+    if (distanceElement) {
+        distanceElement.textContent = `Distance: ${distanceCounter}m`;
+    } else {
+        // Create distance counter if it doesn't exist
+        createDistanceCounter();
+    }
 }
 
 function updateCarPosition(deltaTime) {
@@ -805,13 +828,21 @@ function updateCarPosition(deltaTime) {
             }
         }
         
-        // Use keyboard for steering on desktop
+        // Use keyboard for steering on desktop - FIXED DIRECTION
         const keyboardSensitivity = 0.2;
         if (keys.ArrowLeft || keys.a) {
-            carPosition -= keyboardSensitivity;
+            carPosition -= keyboardSensitivity; // Move left when left arrow pressed
         }
         if (keys.ArrowRight || keys.d) {
-            carPosition += keyboardSensitivity;
+            carPosition += keyboardSensitivity; // Move right when right arrow pressed
+        }
+        
+        // Use keyboard for acceleration/deceleration
+        if (keys.ArrowUp || keys.w) {
+            speed = Math.min(speed + 0.001, maxSpeed); // Accelerate
+        }
+        if (keys.ArrowDown || keys.s) {
+            speed = Math.max(speed - 0.001, 0.01); // Brake
         }
     }
     
@@ -821,6 +852,9 @@ function updateCarPosition(deltaTime) {
     
     // Update car position
     car.position.x = carPosition;
+    
+    // Tilt car based on steering
+    car.rotation.z = -carPosition * 0.1; // Tilt car when turning
     
     // Update camera position in non-VR mode
     if (!isVRMode) {

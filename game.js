@@ -62,7 +62,7 @@ function init() {
     
     try {
         // Check if THREE is available
-        if (!window.THREE) {
+        if (typeof THREE === 'undefined') {
             throw new Error("THREE is not defined. Make sure Three.js is loaded before initializing the game.");
         }
         
@@ -104,8 +104,8 @@ function init() {
             
             // Add VR button
             try {
-                if (window.VRButton) {
-                    document.body.appendChild(window.VRButton.createButton(renderer));
+                if (typeof VRButton !== 'undefined') {
+                    document.body.appendChild(VRButton.createButton(renderer));
                     debugLog("VR button added");
                 } else {
                     debugLog("VRButton is not defined");
@@ -244,7 +244,7 @@ function createSteeringWheel() {
 // Setup VR camera and controllers
 function setupVR() {
     // Check if XRControllerModelFactory is available
-    if (!window.XRControllerModelFactory) {
+    if (typeof XRControllerModelFactory === 'undefined') {
         debugLog("XRControllerModelFactory is not defined");
         return;
     }
@@ -253,7 +253,7 @@ function setupVR() {
     raycaster = new THREE.Raycaster();
     
     // Setup controllers
-    const controllerModelFactory = new window.XRControllerModelFactory();
+    const controllerModelFactory = new XRControllerModelFactory();
     
     // Controller 1 (right hand)
     const controller1 = renderer.xr.getController(0);
@@ -1373,5 +1373,14 @@ function updateVRControllerInput() {
     }
 }
 
-// Make init function globally available
-window.init = init;
+// Initialize when page loads
+window.addEventListener('DOMContentLoaded', () => {
+    debugLog("DOM loaded, initializing game...");
+    try {
+        init();
+    } catch (e) {
+        debugLog("CRITICAL ERROR initializing game: " + e.message);
+        console.error("Error initializing game:", e);
+        alert("There was an error initializing the game. Check the console for details.");
+    }
+});

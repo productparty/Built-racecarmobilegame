@@ -33,21 +33,16 @@
         </div>
     </div>
     
-    <!-- Load Three.js using proper module loading -->
-    <script type="module">
-        import * as THREE from 'https://cdn.skypack.dev/three@0.147.0';
-        import { OrbitControls } from 'https://cdn.skypack.dev/three@0.147.0/examples/jsm/controls/OrbitControls.js';
-        import { VRButton } from 'https://cdn.skypack.dev/three@0.147.0/examples/jsm/webxr/VRButton.js';
-        import { XRControllerModelFactory } from 'https://cdn.skypack.dev/three@0.147.0/examples/jsm/webxr/XRControllerModelFactory.js';
-        
-        // Make THREE available globally
-        window.THREE = THREE;
-        window.OrbitControls = OrbitControls;
-        window.VRButton = VRButton;
-        window.XRControllerModelFactory = XRControllerModelFactory;
-        
-        console.log("Three.js modules loaded successfully");
-        document.getElementById('debug-status').innerHTML += '<div style="color:green">Three.js modules loaded</div>';
+    <!-- Load Three.js libraries directly (non-module approach) -->
+    <script src="https://unpkg.com/three@0.147.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://unpkg.com/three@0.147.0/examples/js/webxr/VRButton.js"></script>
+    <script src="https://unpkg.com/three@0.147.0/examples/js/webxr/XRControllerModelFactory.js"></script>
+    
+    <!-- Debug logging -->
+    <script>
+        console.log("Three.js libraries loaded");
+        document.getElementById('debug-status').innerHTML += '<div style="color:green">Three.js libraries loaded</div>';
         
         // Add console logging for debugging
         console.log("Page loading...");
@@ -60,7 +55,7 @@
         document.getElementById('force-init').addEventListener('click', function() {
             document.getElementById('debug-status').innerHTML += '<div>Forcing initialization...</div>';
             try {
-                window.init();
+                init();
             } catch (e) {
                 document.getElementById('debug-status').innerHTML += `<div style="color:red">Init error: ${e.message}</div>`;
             }
@@ -76,17 +71,9 @@
                 this.textContent = 'Show';
             }
         });
-        
-        // Load game script after Three.js is ready
-        const gameScript = document.createElement('script');
-        gameScript.src = 'game.js';
-        gameScript.onload = function() {
-            document.getElementById('debug-status').innerHTML += '<div>Game script loaded</div>';
-        };
-        gameScript.onerror = function() {
-            document.getElementById('debug-status').innerHTML += '<div style="color:red">Failed to load game script</div>';
-        };
-        document.body.appendChild(gameScript);
     </script>
+    
+    <!-- Load game script -->
+    <script src="game.js"></script>
 </body>
 </html>

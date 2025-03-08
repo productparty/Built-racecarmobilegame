@@ -302,14 +302,27 @@ function setupVR() {
             steeringWheel.visible = true;
             
             // Position steering wheel in front of the player in VR
-            steeringWheel.position.set(0, 1.2, -0.4);
+            steeringWheel.position.set(0, 1.0, -0.3);
             steeringWheel.rotation.x = Math.PI / 6; // Tilt slightly for ergonomics
+        }
+        
+        // Position car and camera for VR
+        resetCarPosition();
+        
+        // Auto-start the game in VR mode
+        isPlaying = true;
+        gameOver = false;
+        
+        // Start engine sound
+        if (soundEnabled && engineSound) {
+            engineSound.currentTime = 0;
+            engineSound.play().catch(e => console.log('Audio play error:', e));
         }
         
         // Create VR info display
         const vrInfo = document.createElement('div');
         vrInfo.id = 'vr-info';
-        vrInfo.textContent = 'Squeeze grip buttons to grab the steering wheel';
+        vrInfo.textContent = 'Squeeze grip buttons to grab the steering wheel | Pull trigger to accelerate';
         document.body.appendChild(vrInfo);
         
         // Hide VR info after 5 seconds
@@ -317,7 +330,7 @@ function setupVR() {
             vrInfo.style.display = 'none';
         }, 5000);
         
-        debugLog("VR session started");
+        debugLog("VR session started - Game auto-started");
     });
     
     renderer.xr.addEventListener('sessionend', () => {
@@ -337,6 +350,9 @@ function setupVR() {
         // Remove VR info display
         const vrInfo = document.getElementById('vr-info');
         if (vrInfo) vrInfo.remove();
+        
+        // Pause the game when exiting VR
+        isPlaying = false;
         
         debugLog("VR session ended");
     });
@@ -635,6 +651,14 @@ function resetCarPosition() {
     carPosition = 0;
     carDistance = 0;
     speed = 0.02;
+    
+    // Clear obstacles near the starting position
+    clearNearbyObstacles();
+    
+    // Reset car appearance
+    resetCarAppearance();
+    
+    debugLog("Car position reset");
 }
 
 function createMountains() {
@@ -766,9 +790,9 @@ function animate(time) {
         // Move car forward in the scene
         car.position.z += speed * deltaTime * 1000;
         
-        // Update camera to follow car - third-person view
+        // Update camera to follow car
         if (!isVRMode) {
-            // Position camera behind and slightly above the car
+            // Third-person view for non-VR mode
             camera.position.x = car.position.x * 0.8; // Follow car's x position with slight lag
             camera.position.y = car.position.y + 3;   // Above the car
             camera.position.z = car.position.z - 7;   // Behind the car
@@ -780,10 +804,13 @@ function animate(time) {
                 car.position.z + 10
             );
         } else {
-            // In VR mode, position the camera in the car
-            camera.position.copy(car.position);
-            camera.position.y += 1.6; // Eye height
-            camera.position.z -= 0.5; // Slightly behind the front of the car
+            // First-person view for VR mode - position camera in driver's seat
+            const driverPosition = car.position.clone();
+            driverPosition.y += 1.2; // Eye height
+            driverPosition.z += 0.5; // Slightly forward in the car
+            
+            // Update camera group position (not the camera directly in VR)
+            renderer.xr.getCamera().position.copy(driverPosition);
         }
         
         // Update distance counter

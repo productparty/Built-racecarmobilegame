@@ -26,6 +26,23 @@ let engineSound, crashSound;
 let gameOver = false;
 let needsRoadExtension = false;
 
+// VR-specific variables
+let isVRMode = false;
+let vrCamera;
+let controllers = [];
+let controllerGrips = [];
+let raycaster;
+let vrControllerInput = { steering: 0, acceleration: 0 };
+let cameraOffset = new THREE.Vector3(0, 1.6, 0); // Player height in VR
+
+// Steering wheel variables
+let steeringWheel;
+let steeringWheelRadius = 0.3;
+let steeringWheelRotation = 0;
+let controllerPreviousPositions = [null, null];
+let isGrabbingSteeringWheel = [false, false];
+let steeringWheelGrabPoints = [null, null];
+
 function init() {
     // Create scene
     scene = new THREE.Scene();
@@ -43,13 +60,23 @@ function init() {
     camera.position.set(0, 8, -10);
     camera.lookAt(0, 0, 10);
     
-    // Create renderer
+    // Create renderer with WebXR support
     const canvas = document.getElementById('game-canvas');
     renderer = new THREE.WebGLRenderer({ 
         canvas,
         antialias: true
     });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.xr.enabled = true;
+    
+    // Add VR button
+    document.body.appendChild(THREE.VRButton.createButton(renderer));
+    
+    // Setup VR camera and controllers
+    setupVR();
+    
+    // Create steering wheel for VR
+    createSteeringWheel();
     
     // Add lights
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -86,8 +113,266 @@ function init() {
     // Add event listeners
     setupEventListeners();
     
-    // Start animation loop
-    animate(0);
+    // Start animation loop with WebXR support
+    renderer.setAnimationLoop(animate);
+}
+
+// Create a steering wheel for VR mode
+function createSteeringWheel() {
+    // Create steering wheel group
+    steeringWheel = new THREE.Group();
+    
+    // Create steering wheel rim
+    const rimGeometry = new THREE.TorusGeometry(steeringWheelRadius, 0.03, 16, 32);
+    const rimMaterial = new THREE.MeshPhongMaterial({ 
+        color: 0x333333,
+        shininess: 80
+    });
+    const rim = new THREE.Mesh(rimGeometry, rimMaterial);
+    steeringWheel.add(rim);
+    
+    // Create steering wheel center
+    const centerGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.02, 32);
+    const centerMaterial = new THREE.MeshPhongMaterial({ 
+        color: 0x222222,
+        shininess: 80
+    });
+    const center = new THREE.Mesh(centerGeometry, centerMaterial);
+    center.rotation.x = Math.PI / 2;
+    steeringWheel.add(center);
+    
+    // Create spokes
+    const spokeGeometry = new THREE.BoxGeometry(steeringWheelRadius * 2 - 0.05, 0.02, 0.02);
+    const spokeMaterial = new THREE.MeshPhongMaterial({ 
+        color: 0x444444,
+        shininess: 80
+    });
+    
+    // Add three spokes
+    for (let i = 0; i < 3; i++) {
+        const spoke = new THREE.Mesh(spokeGeometry, spokeMaterial);
+        spoke.position.set(0, 0, 0);
+        spoke.rotation.z = i * Math.PI / 3;
+        steeringWheel.add(spoke);
+    }
+    
+    // Position steering wheel in front of the player in VR
+    steeringWheel.position.set(0, 1.2, -0.4);
+    steeringWheel.rotation.x = Math.PI / 6; // Tilt slightly for ergonomics
+    
+    // Initially hide the steering wheel (will be shown in VR mode)
+    steeringWheel.visible = false;
+    
+    // Add to scene
+    scene.add(steeringWheel);
+}
+
+// Setup VR camera and controllers
+function setupVR() {
+    // Create raycaster for controller interaction
+    raycaster = new THREE.Raycaster();
+    
+    // Setup controllers
+    const controllerModelFactory = new THREE.XRControllerModelFactory();
+    
+    // Controller 1 (right hand)
+    const controller1 = renderer.xr.getController(0);
+    controller1.addEventListener('selectstart', onSelectStart);
+    controller1.addEventListener('selectend', onSelectEnd);
+    controller1.addEventListener('squeezestart', function(event) {
+        grabSteeringWheel(0, controller1);
+    });
+    controller1.addEventListener('squeezeend', function(event) {
+        releaseSteeringWheel(0);
+    });
+    scene.add(controller1);
+    controllers.push(controller1);
+    
+    // Controller 2 (left hand)
+    const controller2 = renderer.xr.getController(1);
+    controller2.addEventListener('selectstart', onSelectStart);
+    controller2.addEventListener('selectend', onSelectEnd);
+    controller2.addEventListener('squeezestart', function(event) {
+        grabSteeringWheel(1, controller2);
+    });
+    controller2.addEventListener('squeezeend', function(event) {
+        releaseSteeringWheel(1);
+    });
+    scene.add(controller2);
+    controllers.push(controller2);
+    
+    // Controller grips for visual representation
+    const controllerGrip1 = renderer.xr.getControllerGrip(0);
+    controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+    scene.add(controllerGrip1);
+    controllerGrips.push(controllerGrip1);
+    
+    const controllerGrip2 = renderer.xr.getControllerGrip(1);
+    controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+    scene.add(controllerGrip2);
+    controllerGrips.push(controllerGrip2);
+    
+    // Add VR session change listener
+    renderer.xr.addEventListener('sessionstart', () => {
+        isVRMode = true;
+        document.body.classList.add('vr-mode');
+        
+        // Show steering wheel in VR mode
+        if (steeringWheel) {
+            steeringWheel.visible = true;
+        }
+        
+        // Create VR info display
+        const vrInfo = document.createElement('div');
+        vrInfo.id = 'vr-info';
+        vrInfo.textContent = 'Squeeze grip buttons to grab the steering wheel';
+        document.body.appendChild(vrInfo);
+        
+        // Hide VR info after 5 seconds
+        setTimeout(() => {
+            vrInfo.style.display = 'none';
+        }, 5000);
+    });
+    
+    renderer.xr.addEventListener('sessionend', () => {
+        isVRMode = false;
+        document.body.classList.remove('vr-mode');
+        
+        // Hide steering wheel when exiting VR
+        if (steeringWheel) {
+            steeringWheel.visible = false;
+        }
+        
+        // Reset steering wheel state
+        isGrabbingSteeringWheel = [false, false];
+        steeringWheelGrabPoints = [null, null];
+        controllerPreviousPositions = [null, null];
+        
+        // Remove VR info display
+        const vrInfo = document.getElementById('vr-info');
+        if (vrInfo) vrInfo.remove();
+    });
+}
+
+// Grab the steering wheel with a controller
+function grabSteeringWheel(controllerIndex, controller) {
+    if (!steeringWheel) return;
+    
+    // Mark this controller as grabbing the wheel
+    isGrabbingSteeringWheel[controllerIndex] = true;
+    
+    // Calculate the grab point on the wheel (relative to wheel center)
+    const wheelWorldPos = new THREE.Vector3();
+    steeringWheel.getWorldPosition(wheelWorldPos);
+    
+    const controllerWorldPos = new THREE.Vector3();
+    controller.getWorldPosition(controllerWorldPos);
+    
+    // Vector from wheel center to controller
+    const grabVector = new THREE.Vector3().subVectors(controllerWorldPos, wheelWorldPos);
+    
+    // Project onto wheel plane (assuming wheel is on XY plane in its local space)
+    const wheelPlaneNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(steeringWheel.quaternion);
+    const projectedGrabVector = grabVector.clone().projectOnPlane(wheelPlaneNormal);
+    
+    // Normalize to wheel radius
+    projectedGrabVector.normalize().multiplyScalar(steeringWheelRadius);
+    
+    // Store grab point and controller position
+    steeringWheelGrabPoints[controllerIndex] = projectedGrabVector.clone();
+    controllerPreviousPositions[controllerIndex] = controllerWorldPos.clone();
+}
+
+// Release the steering wheel with a controller
+function releaseSteeringWheel(controllerIndex) {
+    isGrabbingSteeringWheel[controllerIndex] = false;
+    steeringWheelGrabPoints[controllerIndex] = null;
+    controllerPreviousPositions[controllerIndex] = null;
+}
+
+// Controller event handlers
+function onSelectStart(event) {
+    if (!isPlaying && !gameOver) {
+        isPlaying = true;
+        if (soundEnabled && engineSound) {
+            engineSound.currentTime = 0;
+            engineSound.play().catch(e => console.log('Audio play error:', e));
+        }
+    }
+    
+    // Mark controller as selecting for acceleration
+    if (event.target) {
+        event.target.userData.isSelecting = true;
+    }
+}
+
+function onSelectEnd(event) {
+    // Mark controller as not selecting
+    if (event.target) {
+        event.target.userData.isSelecting = false;
+    }
+}
+
+// Update steering wheel rotation based on controller movements
+function updateSteeringWheel() {
+    if (!steeringWheel || !isVRMode) return;
+    
+    let rotationDelta = 0;
+    
+    // Process each controller
+    for (let i = 0; i < 2; i++) {
+        if (isGrabbingSteeringWheel[i] && controllers[i] && steeringWheelGrabPoints[i] && controllerPreviousPositions[i]) {
+            // Get current controller position
+            const currentPos = new THREE.Vector3();
+            controllers[i].getWorldPosition(currentPos);
+            
+            // Get wheel position
+            const wheelPos = new THREE.Vector3();
+            steeringWheel.getWorldPosition(wheelPos);
+            
+            // Calculate movement vectors
+            const prevToWheel = new THREE.Vector3().subVectors(wheelPos, controllerPreviousPositions[i]);
+            const currToWheel = new THREE.Vector3().subVectors(wheelPos, currentPos);
+            
+            // Project onto wheel plane
+            const wheelPlaneNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(steeringWheel.quaternion);
+            const prevProjected = prevToWheel.clone().projectOnPlane(wheelPlaneNormal).normalize();
+            const currProjected = currToWheel.clone().projectOnPlane(wheelPlaneNormal).normalize();
+            
+            // Calculate angle between previous and current position
+            const angle = Math.acos(Math.min(1, Math.max(-1, prevProjected.dot(currProjected))));
+            
+            // Determine rotation direction using cross product
+            const cross = new THREE.Vector3().crossVectors(prevProjected, currProjected);
+            const direction = Math.sign(cross.dot(wheelPlaneNormal));
+            
+            // Add to rotation delta
+            rotationDelta += angle * direction * 2; // Amplify rotation for better control
+            
+            // Update previous position
+            controllerPreviousPositions[i].copy(currentPos);
+        }
+    }
+    
+    // Apply rotation to steering wheel
+    if (rotationDelta !== 0) {
+        steeringWheel.rotateZ(rotationDelta);
+        
+        // Limit rotation to +/- 90 degrees
+        const maxRotation = Math.PI / 2;
+        const currentRotation = steeringWheel.rotation.z;
+        
+        if (currentRotation > maxRotation) {
+            steeringWheel.rotation.z = maxRotation;
+        } else if (currentRotation < -maxRotation) {
+            steeringWheel.rotation.z = -maxRotation;
+        }
+        
+        // Update steering input based on wheel rotation
+        // Map from -PI/2 to PI/2 to -1 to 1
+        steeringWheelRotation = steeringWheel.rotation.z;
+        vrControllerInput.steering = steeringWheelRotation / (Math.PI / 2);
+    }
 }
 
 function generateRoad() {
@@ -350,48 +635,48 @@ function createDistanceCounter() {
 }
 
 function animate(time) {
-    requestAnimationFrame(animate);
-    
-    if (!renderer) return;
-    
-    const deltaTime = time - lastTime;
+    // Calculate delta time
+    const deltaTime = lastTime ? (time - lastTime) / 1000 : 0;
     lastTime = time;
     
+    // Update steering wheel in VR mode
+    if (isVRMode) {
+        updateSteeringWheel();
+    }
+    
+    // Update game state
     if (isPlaying && !gameOver) {
-        // Gradually increase speed - more gentle acceleration
+        // Accelerate car
         if (speed < maxSpeed) {
-            speed += acceleration * deltaTime;
-            
-            // Debug speed info
-            if (debugMode) {
-                document.getElementById('debug-info').textContent += 
-                    `\nSpeed: ${speed.toFixed(5)}, Distance: ${distanceCounter.toFixed(2)}`;
-            }
+            speed += acceleration * deltaTime * 1000;
         }
         
-        // Update car position
+        // Update car position based on controls
         updateCarPosition(deltaTime);
         
-        // Update distance counter - adjusted for slower speed
-        distanceCounter += speed * deltaTime * 0.03;
+        // Move car forward
+        carDistance += speed * deltaTime * 1000;
+        
+        // Update distance counter
+        distanceCounter = Math.floor(carDistance / 10);
         updateDistanceCounter();
         
         // Check for collisions
         checkCollisions();
         
-        // Play engine sound
-        if (soundEnabled && engineSound && engineSound.paused) {
-            engineSound.currentTime = 0; // Reset sound to beginning
-            engineSound.play().catch(e => console.log('Audio play error:', e));
-        }
-        
-        // Check if we need to extend the road
-        if (car.position.z > roadLength * 0.7 && !needsRoadExtension) {
+        // Extend road if needed
+        if (carDistance > roadLength - 200 && !needsRoadExtension) {
             needsRoadExtension = true;
             extendRoad();
         }
     }
     
+    // Update VR controller input if in VR mode
+    if (isVRMode) {
+        updateVRControllerInput();
+    }
+    
+    // Render scene
     renderer.render(scene, camera);
 }
 
@@ -402,56 +687,59 @@ function updateDistanceCounter() {
 }
 
 function updateCarPosition(deltaTime) {
-    // Move car forward
-    car.position.z += speed * deltaTime;
-    
-    // Find current road segment
-    const segmentIndex = Math.floor(car.position.z / segmentLength);
-    if (segmentIndex >= 0 && segmentIndex < roadCurve.length) {
-        const targetX = roadCurve[segmentIndex].x;
+    if (isVRMode) {
+        // Use steering wheel rotation for steering
+        carPosition += vrControllerInput.steering * 0.1;
         
-        // Apply device tilt for steering
-        let tiltFactor = 0;
-        
+        // Use right controller trigger for acceleration
+        if (controllers[0] && controllers[0].userData.isSelecting) {
+            speed = THREE.MathUtils.lerp(speed, maxSpeed, 0.05);
+        } else {
+            // Slow down if not accelerating
+            speed = THREE.MathUtils.lerp(speed, 0.02, 0.05);
+        }
+    } else {
+        // Use device orientation for steering on mobile
         if (window.DeviceOrientationEvent) {
-            // For steering wheel style controls (rotate phone like a steering wheel)
-            // Use beta (left-to-right tilt) for steering when holding phone facing you
-            // Negative beta means tilting left (turn left)
-            // Positive beta means tilting right (turn right)
+            // Use gamma (left/right tilt) for steering
+            const tiltSensitivity = 0.05;
+            const tiltAmount = deviceOrientation.gamma;
             
-            // Invert the beta value to fix steering direction
-            tiltFactor = -deviceOrientation.beta / 15; // Inverted and adjusted sensitivity
+            // Adjust for screen orientation
+            let adjustedTilt = tiltAmount;
+            if (screenOrientation === 90) {
+                adjustedTilt = deviceOrientation.beta;
+            } else if (screenOrientation === -90) {
+                adjustedTilt = -deviceOrientation.beta;
+            }
             
-            // Debug steering input
-            if (debugMode) {
-                document.getElementById('debug-info').textContent = 
-                    `Steering: ${tiltFactor.toFixed(2)}, 
-                     Alpha: ${deviceOrientation.alpha.toFixed(2)}, 
-                     Beta: ${deviceOrientation.beta.toFixed(2)}, 
-                     Gamma: ${deviceOrientation.gamma.toFixed(2)}`;
+            // Apply tilt to car position
+            if (adjustedTilt !== null) {
+                carPosition += adjustedTilt * tiltSensitivity;
             }
         }
         
-        // Apply steering
-        car.position.x += tiltFactor * speed * deltaTime;
-        
-        // Apply road curve force (car follows road curve naturally)
-        car.position.x += (targetX - car.position.x) * 0.03;
-        
-        // Limit car to road width
-        const halfRoadWidth = roadWidth / 2;
-        car.position.x = Math.max(targetX - halfRoadWidth, Math.min(targetX + halfRoadWidth, car.position.x));
-        
-        // Tilt car based on steering
-        car.rotation.z = -tiltFactor * 0.2; // Also invert this to match the steering
-        car.rotation.y = Math.atan2(targetX - car.position.x, 10) * 0.2;
+        // Use keyboard for steering on desktop
+        const keyboardSensitivity = 0.2;
+        if (keys.ArrowLeft || keys.a) {
+            carPosition -= keyboardSensitivity;
+        }
+        if (keys.ArrowRight || keys.d) {
+            carPosition += keyboardSensitivity;
+        }
     }
     
-    // Update camera to follow car - position directly behind and slightly above
-    camera.position.x = car.position.x;
-    camera.position.y = car.position.y + 3;
-    camera.position.z = car.position.z - 7;
-    camera.lookAt(car.position.x, car.position.y, car.position.z + 15);
+    // Limit car position to road width
+    const maxPosition = roadWidth / 2 - 1;
+    carPosition = Math.max(-maxPosition, Math.min(carPosition, maxPosition));
+    
+    // Update car position
+    car.position.x = carPosition;
+    
+    // Update camera position in non-VR mode
+    if (!isVRMode) {
+        camera.position.x = carPosition * 0.5;
+    }
 }
 
 function checkCollisions() {
@@ -729,19 +1017,19 @@ function setupEventListeners() {
         });
     }
     
-    // Add keyboard controls for testing on desktop
-    window.addEventListener('keydown', (event) => {
-        if (event.key === 'ArrowLeft') {
-            deviceOrientation.beta = 15; // Simulate tilting left (now positive beta turns left)
-        } else if (event.key === 'ArrowRight') {
-            deviceOrientation.beta = -15;  // Simulate tilting right (now negative beta turns right)
-        }
+    // Add VR button event listener
+    document.getElementById('enter-vr').addEventListener('click', () => {
+        // Enter VR mode
+        renderer.xr.getSession() || renderer.xr.getController(0).dispatchEvent({ type: 'select' });
     });
     
-    window.addEventListener('keyup', (event) => {
-        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-            deviceOrientation.beta = 0;  // Reset when key released
-        }
+    // Add keyboard controls
+    const keys = {};
+    window.addEventListener('keydown', (e) => {
+        keys[e.key] = true;
+    });
+    window.addEventListener('keyup', (e) => {
+        keys[e.key] = false;
     });
 }
 
@@ -938,6 +1226,34 @@ function addObstaclesToExtendedRoad(startZ) {
         
         scene.add(obstacle);
         obstacles.push(obstacle);
+    }
+}
+
+// Update VR controller input
+function updateVRControllerInput() {
+    if (controllers.length >= 2) {
+        // Left controller (0) for steering
+        const leftController = controllers[0];
+        if (leftController.position.x !== 0) {
+            // Map controller X position to steering (-1 to 1)
+            vrControllerInput.steering = THREE.MathUtils.clamp(
+                leftController.position.x * 2, // Amplify movement
+                -1,
+                1
+            );
+        }
+        
+        // Right controller (1) for acceleration
+        const rightController = controllers[1];
+        if (rightController.position.z !== 0) {
+            // Map controller Z position to acceleration (0 to 1)
+            // Negative Z is forward (pull trigger toward you)
+            vrControllerInput.acceleration = THREE.MathUtils.clamp(
+                -rightController.position.z * 2, // Amplify movement
+                0,
+                1
+            );
+        }
     }
 }
 

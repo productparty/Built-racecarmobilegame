@@ -1,86 +1,59 @@
-# Race Car Game
+# VR Race Car Game
 
-A web-based race car game with gyroscope steering, designed for iPhone.
+A WebXR-compatible racing game that works on desktop, mobile, and VR headsets like Meta Quest 2.
 
 ## Features
 
-- Colorful 3D environment with procedurally generated road
-- Gyroscope-based steering (tilt your phone to steer)
-- Mountains and trees for an immersive environment
-- Dramatic road turns for challenging gameplay
+- Responsive design works on desktop, mobile, and VR
+- WebXR support for immersive VR experience
+- Virtual steering wheel for realistic driving in VR
+- Intuitive controls for each platform
 - Obstacle avoidance gameplay
-- Car explosion effects with flames and particles
-- Sound effects for engine and crashes
-- Restart-in-place functionality after crashes
+- Distance tracking and scoring
 
-## Controls
+## Playing in VR on Meta Quest 2
 
-- **Go!** - Start the game
-- **Stop** - Pause the game
-- **Try Again** - Continue from where you crashed
-- **Debug** - Show debug information
-- **🔊/🔇** - Toggle sound on/off
+1. Open the game URL in the Meta Quest browser
+2. Click the "Enter VR" button or use the WebXR button that appears
+3. Use the controllers:
+   - Grab the steering wheel with both hands using the grip buttons (squeeze the side buttons)
+   - Rotate the wheel to steer left and right
+   - Pull the trigger on either controller to accelerate
+   - Release the trigger to slow down
 
-## How to Play
+## Desktop Controls
 
-1. Open the game on your iPhone
-2. Press "Go!" to start driving
-3. Tilt your phone to steer the car
-4. Avoid obstacles and mountains on the road
-5. If you crash, press "Try Again" to continue from that point
+- Arrow keys or WASD to steer
+- Click "Go!" button to start
 
-## Running the Game
+## Mobile Controls
 
-### Local Development
+- Tilt your device left/right to steer
+- Touch "Go!" button to start
 
-1. Clone this repository
-2. Open the project folder
-3. Start a local web server (you can use Python's built-in server):
-   ```
-   python -m http.server
-   ```
-4. Open your browser and navigate to `http://localhost:8000`
+## Development
 
-### Deployment
+This game uses:
+- Three.js for 3D rendering
+- WebXR API for VR support
+- Standard HTML/CSS/JavaScript
 
-For the best experience on mobile devices, deploy to a web server with HTTPS support, as device orientation API requires a secure context.
+## VR Optimization Tips
 
-You can use services like:
-- GitHub Pages
-- Netlify
-- Vercel
+- Keep the game running at 72fps+ for comfortable VR experience
+- Reduce polygon count for better performance
+- Use spatial audio for immersion
+- Implement comfort settings to reduce motion sickness
 
-## Technical Details
+## Deployment
 
-The game is built using:
-- HTML5
-- CSS3
-- JavaScript
-- Three.js for 3D graphics
-
-## Device Compatibility
-
-- Works best on modern mobile browsers
-- Requires device orientation support
-- For iOS 13+, the game will request permission to use the gyroscope 
-
-### Development
-
-To run locally:
+The game can be deployed to any static web hosting service.
 
 ```
-npx serve
+npm install
+npm run build
 ```
 
-To deploy to Vercel:
+## License
 
-```
-vercel --prod
-```
-
-### Credits
-
-- Sound effects:
-  - Engine sound: "Car Changing Gears Sound" 
-  - Crash sound: "Car Accident with Squeal and Crash"
-- Built with Three.js 
+MIT 

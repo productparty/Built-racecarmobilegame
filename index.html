@@ -23,11 +23,70 @@
         <div id="game-over"></div>
     </div>
     
-    <!-- Load Three.js and WebXR libraries -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r147/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/webxr/VRButton.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/webxr/XRControllerModelFactory.js"></script>
-    <script src="game.js"></script>
+    <!-- Debug panel for troubleshooting -->
+    <div id="debug-panel">
+        <h3>Debug Panel</h3>
+        <div id="debug-status">Loading...</div>
+        <div>
+            <button id="force-init">Force Init</button>
+            <button id="toggle-debug-panel">Hide</button>
+        </div>
+    </div>
+    
+    <!-- Load Three.js using proper module loading -->
+    <script type="module">
+        import * as THREE from 'https://cdn.skypack.dev/three@0.147.0';
+        import { OrbitControls } from 'https://cdn.skypack.dev/three@0.147.0/examples/jsm/controls/OrbitControls.js';
+        import { VRButton } from 'https://cdn.skypack.dev/three@0.147.0/examples/jsm/webxr/VRButton.js';
+        import { XRControllerModelFactory } from 'https://cdn.skypack.dev/three@0.147.0/examples/jsm/webxr/XRControllerModelFactory.js';
+        
+        // Make THREE available globally
+        window.THREE = THREE;
+        window.OrbitControls = OrbitControls;
+        window.VRButton = VRButton;
+        window.XRControllerModelFactory = XRControllerModelFactory;
+        
+        console.log("Three.js modules loaded successfully");
+        document.getElementById('debug-status').innerHTML += '<div style="color:green">Three.js modules loaded</div>';
+        
+        // Add console logging for debugging
+        console.log("Page loading...");
+        window.addEventListener('error', function(e) {
+            console.error("Global error:", e.message, "at", e.filename, ":", e.lineno);
+            document.getElementById('debug-status').innerHTML += `<div style="color:red">ERROR: ${e.message}</div>`;
+        });
+        
+        // Debug panel controls
+        document.getElementById('force-init').addEventListener('click', function() {
+            document.getElementById('debug-status').innerHTML += '<div>Forcing initialization...</div>';
+            try {
+                window.init();
+            } catch (e) {
+                document.getElementById('debug-status').innerHTML += `<div style="color:red">Init error: ${e.message}</div>`;
+            }
+        });
+        
+        document.getElementById('toggle-debug-panel').addEventListener('click', function() {
+            const panel = document.getElementById('debug-panel');
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                this.textContent = 'Hide';
+            } else {
+                panel.style.display = 'none';
+                this.textContent = 'Show';
+            }
+        });
+        
+        // Load game script after Three.js is ready
+        const gameScript = document.createElement('script');
+        gameScript.src = 'game.js';
+        gameScript.onload = function() {
+            document.getElementById('debug-status').innerHTML += '<div>Game script loaded</div>';
+        };
+        gameScript.onerror = function() {
+            document.getElementById('debug-status').innerHTML += '<div style="color:red">Failed to load game script</div>';
+        };
+        document.body.appendChild(gameScript);
+    </script>
 </body>
 </html>

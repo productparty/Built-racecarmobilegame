@@ -43,78 +43,152 @@ let controllerPreviousPositions = [null, null];
 let isGrabbingSteeringWheel = [false, false];
 let steeringWheelGrabPoints = [null, null];
 
+// Keyboard controls
+const keys = {};
+
+// Debug logging function
+function debugLog(message) {
+    console.log(message);
+    const debugStatus = document.getElementById('debug-status');
+    if (debugStatus) {
+        debugStatus.innerHTML += `<div>${message}</div>`;
+        // Auto-scroll to bottom
+        debugStatus.scrollTop = debugStatus.scrollHeight;
+    }
+}
+
 function init() {
-    // Create scene
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87CEEB);
+    debugLog("Initializing game...");
     
-    // Create camera
-    camera = new THREE.PerspectiveCamera(
-        60,
-        window.innerWidth / window.innerHeight,
-        0.1,
-        1000
-    );
-    
-    // Position camera to see the road and car
-    camera.position.set(0, 8, -10);
-    camera.lookAt(0, 0, 10);
-    
-    // Create renderer with WebXR support
-    const canvas = document.getElementById('game-canvas');
-    renderer = new THREE.WebGLRenderer({ 
-        canvas,
-        antialias: true
-    });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.xr.enabled = true;
-    
-    // Add VR button
-    document.body.appendChild(THREE.VRButton.createButton(renderer));
-    
-    // Setup VR camera and controllers
-    setupVR();
-    
-    // Create steering wheel for VR
-    createSteeringWheel();
-    
-    // Add lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
-    
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(1, 1, 1);
-    scene.add(directionalLight);
+    try {
+        // Check if THREE is available
+        if (!window.THREE) {
+            throw new Error("THREE is not defined. Make sure Three.js is loaded before initializing the game.");
+        }
+        
+        // Create scene
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        debugLog("Scene created");
+        
+        // Create camera
+        camera = new THREE.PerspectiveCamera(
+            60,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+        
+        // Position camera to see the road and car
+        camera.position.set(0, 8, -10);
+        camera.lookAt(0, 0, 10);
+        debugLog("Camera created");
+        
+        // Create renderer with WebXR support
+        const canvas = document.getElementById('game-canvas');
+        if (!canvas) {
+            throw new Error("Canvas element not found");
+        }
+        
+        renderer = new THREE.WebGLRenderer({ 
+            canvas,
+            antialias: true
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        debugLog("Renderer created");
+        
+        // Enable WebXR if supported
+        if (navigator.xr) {
+            debugLog("WebXR is supported");
+            renderer.xr.enabled = true;
+            
+            // Add VR button
+            try {
+                if (window.VRButton) {
+                    document.body.appendChild(window.VRButton.createButton(renderer));
+                    debugLog("VR button added");
+                } else {
+                    debugLog("VRButton is not defined");
+                }
+            } catch (e) {
+                debugLog("Error creating VR button: " + e.message);
+                console.error("Error creating VR button:", e);
+            }
+            
+            // Setup VR camera and controllers
+            setupVR();
+            
+            // Create steering wheel for VR
+            createSteeringWheel();
+        } else {
+            debugLog("WebXR is not supported in this browser");
+        }
+        
+        // Add lights
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+        debugLog("Lights added");
 
-    // Create fog for depth effect
-    scene.fog = new THREE.Fog(0x87CEEB, 50, 300);
+        // Create fog for depth effect
+        scene.fog = new THREE.Fog(0x87CEEB, 50, 300);
 
-    // Generate curved road
-    generateRoad();
-    
-    // Create car
-    createCar();
-    
-    // Add mountains
-    createMountains();
-    
-    // Add trees
-    createTrees();
-    
-    // Add obstacles
-    createObstacles();
-    
-    // Load sounds
-    loadSounds();
-    
-    // Add distance counter
-    createDistanceCounter();
-    
-    // Add event listeners
-    setupEventListeners();
-    
-    // Start animation loop with WebXR support
-    renderer.setAnimationLoop(animate);
+        // Generate curved road
+        generateRoad();
+        debugLog("Road generated");
+        
+        // Create car
+        createCar();
+        debugLog("Car created");
+        
+        // Add mountains
+        createMountains();
+        debugLog("Mountains created");
+        
+        // Add trees
+        createTrees();
+        debugLog("Trees created");
+        
+        // Add obstacles
+        createObstacles();
+        debugLog("Obstacles created");
+        
+        // Load sounds
+        loadSounds();
+        debugLog("Sounds loaded");
+        
+        // Add distance counter
+        createDistanceCounter();
+        debugLog("Distance counter created");
+        
+        // Add event listeners
+        setupEventListeners();
+        debugLog("Event listeners set up");
+        
+        // Start animation loop with WebXR support
+        if (renderer.xr && renderer.xr.enabled) {
+            renderer.setAnimationLoop(animate);
+            debugLog("WebXR animation loop started");
+        } else {
+            // Fallback for non-WebXR browsers
+            requestAnimationFrame(animateFallback);
+            debugLog("Standard animation loop started");
+        }
+        
+        debugLog("Game initialized successfully");
+    } catch (error) {
+        debugLog("ERROR during initialization: " + error.message);
+        console.error("Initialization error:", error);
+    }
+}
+
+// Fallback animation loop for non-WebXR browsers
+function animateFallback(time) {
+    requestAnimationFrame(animateFallback);
+    animate(time);
 }
 
 // Create a steering wheel for VR mode
@@ -169,11 +243,17 @@ function createSteeringWheel() {
 
 // Setup VR camera and controllers
 function setupVR() {
+    // Check if XRControllerModelFactory is available
+    if (!window.XRControllerModelFactory) {
+        debugLog("XRControllerModelFactory is not defined");
+        return;
+    }
+    
     // Create raycaster for controller interaction
     raycaster = new THREE.Raycaster();
     
     // Setup controllers
-    const controllerModelFactory = new THREE.XRControllerModelFactory();
+    const controllerModelFactory = new window.XRControllerModelFactory();
     
     // Controller 1 (right hand)
     const controller1 = renderer.xr.getController(0);
@@ -232,6 +312,8 @@ function setupVR() {
         setTimeout(() => {
             vrInfo.style.display = 'none';
         }, 5000);
+        
+        debugLog("VR session started");
     });
     
     renderer.xr.addEventListener('sessionend', () => {
@@ -251,6 +333,8 @@ function setupVR() {
         // Remove VR info display
         const vrInfo = document.getElementById('vr-info');
         if (vrInfo) vrInfo.remove();
+        
+        debugLog("VR session ended");
     });
 }
 
@@ -677,7 +761,9 @@ function animate(time) {
     }
     
     // Render scene
-    renderer.render(scene, camera);
+    if (renderer) {
+        renderer.render(scene, camera);
+    }
 }
 
 function updateDistanceCounter() {
@@ -908,32 +994,51 @@ function createExplosion(position) {
 }
 
 function setupEventListeners() {
-    document.getElementById('start-button').addEventListener('click', () => {
-        isPlaying = true;
-        gameOver = false;
-        document.getElementById('game-over').classList.remove('visible');
-        
-        // Reset car appearance when starting
-        resetCarAppearance();
-        
-        // Start engine sound
-        if (soundEnabled && engineSound) {
-            engineSound.currentTime = 0;
-            engineSound.play().catch(e => console.log('Audio play error:', e));
-        }
-        
-        // Request device orientation permission on iOS 13+
-        if (typeof DeviceOrientationEvent !== 'undefined' && 
-            typeof DeviceOrientationEvent.requestPermission === 'function') {
-            DeviceOrientationEvent.requestPermission()
-                .then(permissionState => {
-                    if (permissionState === 'granted') {
-                        window.addEventListener('deviceorientation', handleOrientation);
-                    }
-                })
-                .catch(console.error);
-        }
-    });
+    const startButton = document.getElementById('start-button');
+    if (startButton) {
+        startButton.addEventListener('click', () => {
+            debugLog("Start button clicked");
+            isPlaying = true;
+            gameOver = false;
+            document.getElementById('game-over').classList.remove('visible');
+            
+            // Reset car appearance when starting
+            resetCarAppearance();
+            
+            // Start engine sound
+            if (soundEnabled && engineSound) {
+                engineSound.currentTime = 0;
+                engineSound.play().catch(e => {
+                    debugLog("Audio play error: " + e.message);
+                    console.log('Audio play error:', e);
+                });
+            }
+            
+            // Request device orientation permission on iOS 13+
+            if (typeof DeviceOrientationEvent !== 'undefined' && 
+                typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(permissionState => {
+                        if (permissionState === 'granted') {
+                            window.addEventListener('deviceorientation', handleOrientation);
+                            debugLog("Device orientation permission granted");
+                        } else {
+                            debugLog("Device orientation permission denied");
+                        }
+                    })
+                    .catch(error => {
+                        debugLog("Error requesting orientation permission: " + error.message);
+                        console.error(error);
+                    });
+            } else {
+                // For non-iOS devices or older iOS versions
+                window.addEventListener('deviceorientation', handleOrientation);
+                debugLog("Device orientation listener added (no permission needed)");
+            }
+        });
+    } else {
+        debugLog("ERROR: Start button not found");
+    }
     
     document.getElementById('stop-button').addEventListener('click', () => {
         isPlaying = false;
@@ -1018,13 +1123,24 @@ function setupEventListeners() {
     }
     
     // Add VR button event listener
-    document.getElementById('enter-vr').addEventListener('click', () => {
-        // Enter VR mode
-        renderer.xr.getSession() || renderer.xr.getController(0).dispatchEvent({ type: 'select' });
-    });
+    const enterVRButton = document.getElementById('enter-vr');
+    if (enterVRButton) {
+        enterVRButton.addEventListener('click', () => {
+            debugLog("Enter VR button clicked");
+            // Enter VR mode if supported
+            if (renderer && renderer.xr && renderer.xr.enabled) {
+                debugLog("Attempting to enter VR mode");
+                renderer.xr.getSession() || renderer.xr.getController(0).dispatchEvent({ type: 'select' });
+            } else {
+                debugLog("WebXR not supported or not enabled");
+                alert("WebXR is not supported in this browser or device");
+            }
+        });
+    } else {
+        debugLog("ERROR: Enter VR button not found");
+    }
     
     // Add keyboard controls
-    const keys = {};
     window.addEventListener('keydown', (e) => {
         keys[e.key] = true;
     });
@@ -1257,5 +1373,5 @@ function updateVRControllerInput() {
     }
 }
 
-// Initialize when page loads
-window.addEventListener('load', init);
+// Make init function globally available
+window.init = init;

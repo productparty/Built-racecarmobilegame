@@ -300,6 +300,10 @@ function setupVR() {
         // Show steering wheel in VR mode
         if (steeringWheel) {
             steeringWheel.visible = true;
+            
+            // Position steering wheel in front of the player in VR
+            steeringWheel.position.set(0, 1.2, -0.4);
+            steeringWheel.rotation.x = Math.PI / 6; // Tilt slightly for ergonomics
         }
         
         // Create VR info display
@@ -469,130 +473,68 @@ function generateRoad() {
         scene.remove(road);
     }
     
-    // Create road geometry
-    const roadGeometry = new THREE.BufferGeometry();
-    const vertices = [];
-    const uvs = [];
+    // Create road group
+    const roadGroup = new THREE.Group();
     
-    // Generate road curve with smoother turns
-    for (let i = 0; i < roadLength; i += segmentLength) {
-        // Create a smoother curve for the road
-        // Use sine waves with different frequencies and amplitudes
-        const curveX = Math.sin(i * 0.01) * 10 + Math.sin(i * 0.02) * 5;
+    // Generate road curve
+    let x = 0;
+    let z = 0;
+    let direction = 0;
+    
+    for (let i = 0; i < roadLength / segmentLength; i++) {
+        // Gradually change direction for curves
+        if (i % 20 === 0) {
+            direction = Math.random() * 0.3 - 0.15;
+        }
         
-        // Store road curve for collision detection
-        roadCurve.push(new THREE.Vector2(curveX, i));
+        x += direction * segmentLength;
+        z += segmentLength;
         
-        // Create road segment vertices
-        const halfWidth = roadWidth / 2;
-        
-        // Left edge
-        vertices.push(curveX - halfWidth, 0, i);
-        uvs.push(0, i / roadLength);
-        
-        // Right edge
-        vertices.push(curveX + halfWidth, 0, i);
-        uvs.push(1, i / roadLength);
+        roadCurve.push({ x, z });
     }
     
-    // Create faces (triangles) for the road
-    const indices = [];
-    for (let i = 0; i < roadLength / segmentLength * 2 - 2; i += 2) {
-        // First triangle
-        indices.push(i, i + 1, i + 2);
+    // Create road segments
+    for (let i = 0; i < roadCurve.length - 1; i++) {
+        const p1 = roadCurve[i];
+        const p2 = roadCurve[i + 1];
         
-        // Second triangle
-        indices.push(i + 1, i + 3, i + 2);
-    }
-    
-    // Set geometry attributes
-    roadGeometry.setIndex(indices);
-    roadGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    roadGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-    roadGeometry.computeVertexNormals();
-    
-    // Create road material
-    const roadMaterial = new THREE.MeshStandardMaterial({
-        color: 0x333333,
-        roughness: 0.8,
-        metalness: 0.2
-    });
-    
-    // Create road mesh
-    road = new THREE.Mesh(roadGeometry, roadMaterial);
-    scene.add(road);
-    
-    // Add road markings
-    addRoadMarkings();
-}
-
-function addRoadMarkings() {
-    // Create road markings (center line)
-    const markingsGroup = new THREE.Group();
-    
-    // Create dashed line down the center of the road
-    for (let i = 0; i < roadLength; i += 20) {
-        // Get road curve position at this point
-        const segmentIndex = Math.floor(i / segmentLength);
-        if (segmentIndex < roadCurve.length) {
-            const curvePoint = roadCurve[segmentIndex];
-            
-            // Create marking geometry
-            const markingGeometry = new THREE.PlaneGeometry(0.5, 5);
-            const markingMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0xFFFFFF,
-                roughness: 0.5,
-                metalness: 0.2
-            });
-            
+        // Calculate segment direction
+        const dx = p2.x - p1.x;
+        const dz = p2.z - p1.z;
+        const angle = Math.atan2(dx, dz);
+        
+        // Create segment
+        const segmentGeometry = new THREE.PlaneGeometry(roadWidth, segmentLength);
+        const segmentMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x333333,
+            side: THREE.DoubleSide
+        });
+        const segment = new THREE.Mesh(segmentGeometry, segmentMaterial);
+        
+        // Position and rotate segment
+        segment.position.set(p1.x + dx/2, 0, p1.z + dz/2);
+        segment.rotation.set(-Math.PI/2, 0, angle);
+        
+        roadGroup.add(segment);
+        roadSegments.push(segment);
+        
+        // Add road markings
+        if (i % 5 === 0) {
+            const markingGeometry = new THREE.PlaneGeometry(0.5, 2);
+            const markingMaterial = new THREE.MeshPhongMaterial({ color: 0xFFFFFF });
             const marking = new THREE.Mesh(markingGeometry, markingMaterial);
             
-            // Position marking at the center of the road
-            marking.position.set(curvePoint.x, 0.01, i);
-            marking.rotation.x = -Math.PI / 2;
+            marking.position.set(p1.x + dx/2, 0.01, p1.z + dz/2);
+            marking.rotation.set(-Math.PI/2, 0, angle);
             
-            markingsGroup.add(marking);
+            roadGroup.add(marking);
         }
     }
     
-    // Add edge markings
-    for (let i = 0; i < roadLength; i += 40) {
-        // Get road curve position at this point
-        const segmentIndex = Math.floor(i / segmentLength);
-        if (segmentIndex < roadCurve.length) {
-            const curvePoint = roadCurve[segmentIndex];
-            const halfWidth = roadWidth / 2;
-            
-            // Left edge marking
-            const leftMarkingGeometry = new THREE.PlaneGeometry(0.5, 10);
-            const leftMarkingMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0xFFFF00,
-                roughness: 0.5,
-                metalness: 0.2
-            });
-            
-            const leftMarking = new THREE.Mesh(leftMarkingGeometry, leftMarkingMaterial);
-            leftMarking.position.set(curvePoint.x - halfWidth + 0.5, 0.02, i);
-            leftMarking.rotation.x = -Math.PI / 2;
-            
-            // Right edge marking
-            const rightMarkingGeometry = new THREE.PlaneGeometry(0.5, 10);
-            const rightMarkingMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0xFFFF00,
-                roughness: 0.5,
-                metalness: 0.2
-            });
-            
-            const rightMarking = new THREE.Mesh(rightMarkingGeometry, rightMarkingMaterial);
-            rightMarking.position.set(curvePoint.x + halfWidth - 0.5, 0.02, i);
-            rightMarking.rotation.x = -Math.PI / 2;
-            
-            markingsGroup.add(leftMarking);
-            markingsGroup.add(rightMarking);
-        }
-    }
+    road = roadGroup;
+    scene.add(road);
     
-    scene.add(markingsGroup);
+    debugLog("Road generated with " + roadSegments.length + " segments");
 }
 
 function createCar() {
@@ -837,6 +779,11 @@ function animate(time) {
                 car.position.y + 1, 
                 car.position.z + 10
             );
+        } else {
+            // In VR mode, position the camera in the car
+            camera.position.copy(car.position);
+            camera.position.y += 1.6; // Eye height
+            camera.position.z -= 0.5; // Slightly behind the front of the car
         }
         
         // Update distance counter

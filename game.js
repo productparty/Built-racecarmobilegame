@@ -79,8 +79,8 @@ function init() {
             1000
         );
         
-        // Position camera to see the road and car
-        camera.position.set(0, 8, -10);
+        // Position camera behind the car (third-person view)
+        camera.position.set(0, 3, -5);
         camera.lookAt(0, 0, 10);
         debugLog("Camera created");
         
@@ -747,9 +747,20 @@ function animate(time) {
         // Move car forward in the scene
         car.position.z += speed * deltaTime * 1000;
         
-        // Update camera to follow car
-        camera.position.z = car.position.z - 10;
-        camera.lookAt(car.position.x, car.position.y, car.position.z + 10);
+        // Update camera to follow car - third-person view
+        if (!isVRMode) {
+            // Position camera behind and slightly above the car
+            camera.position.x = car.position.x * 0.8; // Follow car's x position with slight lag
+            camera.position.y = car.position.y + 3;   // Above the car
+            camera.position.z = car.position.z - 7;   // Behind the car
+            
+            // Look at a point ahead of the car
+            camera.lookAt(
+                car.position.x, 
+                car.position.y + 1, 
+                car.position.z + 10
+            );
+        }
         
         // Update distance counter
         distanceCounter = Math.floor(carDistance / 10);
@@ -764,13 +775,33 @@ function animate(time) {
             extendRoad();
         }
         
-        // Debug info
+        // Update debug info
         if (debugMode) {
-            document.getElementById('debug-info').textContent = 
-                `Speed: ${speed.toFixed(3)}\n` +
-                `Distance: ${distanceCounter}\n` +
-                `Car Z: ${car.position.z.toFixed(2)}\n` +
-                `Car X: ${car.position.x.toFixed(2)}`;
+            const debugPosition = document.getElementById('debug-position');
+            const debugSpeed = document.getElementById('debug-speed');
+            const debugDistance = document.getElementById('debug-distance');
+            const debugKeys = document.getElementById('debug-keys');
+            
+            if (debugPosition) {
+                debugPosition.textContent = `Position: ${car.position.x.toFixed(2)}, ${car.position.y.toFixed(2)}, ${car.position.z.toFixed(2)}`;
+            }
+            
+            if (debugSpeed) {
+                debugSpeed.textContent = `Speed: ${speed.toFixed(3)}`;
+            }
+            
+            if (debugDistance) {
+                debugDistance.textContent = `Distance: ${distanceCounter}`;
+            }
+            
+            if (debugKeys) {
+                const activeKeys = [];
+                if (keys.ArrowLeft || keys.a) activeKeys.push('Left');
+                if (keys.ArrowRight || keys.d) activeKeys.push('Right');
+                if (keys.ArrowUp || keys.w) activeKeys.push('Up');
+                if (keys.ArrowDown || keys.s) activeKeys.push('Down');
+                debugKeys.textContent = `Keys: ${activeKeys.length > 0 ? activeKeys.join(', ') : 'None'}`;
+            }
         }
     }
     
@@ -855,11 +886,9 @@ function updateCarPosition(deltaTime) {
     
     // Tilt car based on steering
     car.rotation.z = -carPosition * 0.1; // Tilt car when turning
+    car.rotation.y = carPosition * 0.05; // Slight yaw when turning
     
-    // Update camera position in non-VR mode
-    if (!isVRMode) {
-        camera.position.x = carPosition * 0.5;
-    }
+    // No need to update camera position here, it's done in animate()
 }
 
 function checkCollisions() {
@@ -885,31 +914,29 @@ function checkCollisions() {
 }
 
 function handleCrash(message) {
+    if (gameOver) return; // Prevent multiple crashes
+    
     gameOver = true;
     isPlaying = false;
     
-    // Stop engine sound and play crash sound
-    if (soundEnabled) {
-        if (engineSound) {
-            engineSound.pause();
-            engineSound.currentTime = 0;
-        }
-        
-        // Force crash sound to play by creating a new instance
-        if (crashSound) {
-            // Create a new instance to avoid issues with previous plays
-            const crashSoundInstance = new Audio(crashSound.src);
-            crashSoundInstance.volume = 1.0;
-            crashSoundInstance.play().catch(e => console.log('Crash sound play error:', e));
-        }
+    // Show game over message
+    const gameOverElement = document.getElementById('game-over');
+    gameOverElement.textContent = message || 'Game Over!';
+    gameOverElement.classList.add('visible');
+    
+    // Play crash sound
+    if (soundEnabled && crashSound) {
+        crashSound.currentTime = 0;
+        crashSound.play().catch(e => console.log('Audio play error:', e));
     }
     
-    // Show game over message
-    document.getElementById('game-over').textContent = message;
-    document.getElementById('game-over').classList.add('visible');
-    
     // Create explosion effect
-    createExplosion(car.position);
+    createExplosion(car.position.clone());
+    
+    // Show restart button
+    document.getElementById('restart-button').style.display = 'block';
+    
+    debugLog("Crash: " + message);
 }
 
 function createExplosion(position) {
@@ -1082,11 +1109,14 @@ function setupEventListeners() {
     });
     
     document.getElementById('restart-button').addEventListener('click', () => {
+        debugLog("Restart button clicked");
+        
         // Reset car position
         car.position.set(0, 0.4, 0);
+        carPosition = 0;
         
         // Reset camera
-        camera.position.set(0, 8, -10);
+        camera.position.set(0, 3, -5);
         camera.lookAt(0, 0, 10);
         
         // Reset game state
@@ -1094,6 +1124,7 @@ function setupEventListeners() {
         gameOver = false;
         speed = 0.02; // Reset to initial slower speed
         distanceCounter = 0;
+        carDistance = 0;
         updateDistanceCounter(); // Update the display
         document.getElementById('game-over').classList.remove('visible');
         
@@ -1114,11 +1145,43 @@ function setupEventListeners() {
                 crashSound.currentTime = 0;
             }
         }
+        
+        // Hide restart button
+        document.getElementById('restart-button').style.display = 'none';
+        
+        // Start the game again
+        setTimeout(() => {
+            isPlaying = true;
+            if (soundEnabled && engineSound) {
+                engineSound.play().catch(e => console.log('Audio play error:', e));
+            }
+        }, 500);
     });
     
     document.getElementById('toggle-debug').addEventListener('click', () => {
         debugMode = !debugMode;
-        document.getElementById('debug-info').style.display = debugMode ? 'block' : 'none';
+        debugLog("Debug mode " + (debugMode ? "enabled" : "disabled"));
+        
+        // Show/hide debug info
+        const debugInfo = document.getElementById('debug-info');
+        if (debugInfo) {
+            debugInfo.style.display = debugMode ? 'block' : 'none';
+            
+            if (debugMode) {
+                // Create detailed debug display
+                debugInfo.innerHTML = `
+                    <div>Debug Mode Enabled</div>
+                    <div>Controls: Arrow keys or WASD</div>
+                    <div>Left/Right: Steer</div>
+                    <div>Up/Down: Accelerate/Brake</div>
+                    <div>-----------------</div>
+                    <div id="debug-position">Position: 0, 0, 0</div>
+                    <div id="debug-speed">Speed: 0</div>
+                    <div id="debug-distance">Distance: 0</div>
+                    <div id="debug-keys">Keys: None</div>
+                `;
+            }
+        }
     });
     
     document.getElementById('toggle-sound').addEventListener('click', (e) => {
@@ -1191,21 +1254,20 @@ function onWindowResize() {
 
 // Function to clear obstacles near the car's position
 function clearNearbyObstacles() {
-    const safeDistance = 30; // Distance to clear obstacles ahead
+    // Remove obstacles near the starting position to prevent immediate crashes
+    const safeZone = 50; // Safe zone distance
     
-    // Remove obstacles that are too close to the starting position
-    for (let i = obstacles.length - 1; i >= 0; i--) {
-        const obstacle = obstacles[i];
-        
-        // Check if obstacle is ahead of the car and within safe distance
-        if (obstacle.position.z > car.position.z && 
-            obstacle.position.z < car.position.z + safeDistance) {
-            
-            // Remove from scene and from obstacles array
+    // Filter out obstacles in the safe zone
+    obstacles = obstacles.filter(obstacle => {
+        const distance = obstacle.position.distanceTo(new THREE.Vector3(0, 0, 0));
+        if (distance < safeZone) {
             scene.remove(obstacle);
-            obstacles.splice(i, 1);
+            return false;
         }
-    }
+        return true;
+    });
+    
+    debugLog(`Cleared obstacles within ${safeZone} units of start position`);
 }
 
 // Function to reset car appearance after crash
